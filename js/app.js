@@ -56,7 +56,7 @@ const COR_FIXA = {
   VIAGEM: '#2E9C9C', 'FARMÁCIA': '#9E3D5C', ASSINATURAS: '#4C5FD5', CASA: '#8C6D1F', PET: '#5A7D2B',
   PRESENTES: '#A36A9E', 'SAÚDE': '#B8426F', OUTROS: '#8A8FA3',
   ALUGUEL: '#1F6F8B', CONDOMINIO: '#6B5CA5', INTERNET: '#2E9C9C', AGUA: '#4C5FD5', ENERGIA: '#C98406', GAS: '#D0672F',
-  'CASAL (DIA A DIA)': '#1F6F8B', 'ACERTO DO CASAL': '#1F6F8B', MORADIA: '#6B5CA5', 'PLANILHA (SEM DETALHE)': '#B9C2BF',
+  'CASAL (DIA A DIA)': '#1F6F8B', 'ACERTO DO CASAL': '#1F6F8B', 'CONDOMÍNIO': '#6B5CA5', 'CONTAS DA MORADIA': '#C98406', MORADIA: '#6B5CA5', 'PLANILHA (SEM DETALHE)': '#B9C2BF',
 };
 function corTipo(t) {
   if (COR_FIXA[t]) return COR_FIXA[t];
@@ -719,6 +719,12 @@ function dadosEu() {
   const pessoa = S.perfil.pessoa;
   const { mor, geral } = dadosDoMes();
   const moradia = C.custoPessoalDoCasal([], mor, pessoa).moradia;
+  const metade = (contas) => C.r2(mor.filter((m) => contas.includes(m.conta)).reduce((a, m) => a + Number(m.valor) / 2, 0));
+  const morPartes = {
+    aluguel: metade(['ALUGUEL']),
+    condominio: metade(['CONDOMINIO']),
+    contas: metade(['INTERNET', 'AGUA', 'ENERGIA', 'GAS']),
+  };
   // acerto do casal: entra como ganho (recebe) ou gasto (paga)
   const recebe = geral.valor && geral.para === pessoa ? geral.valor : 0;
   const paga = geral.valor && geral.de === pessoa ? geral.valor : 0;
@@ -728,10 +734,10 @@ function dadosEu() {
   const soma = (l) => C.r2(l.reduce((a, x) => a + Number(x.valor), 0));
   const totG = soma(ganhos); const totP = soma(gastos);
   const sobra = C.r2(totG + recebe - totP - paga - moradia);
-  return { pessoa, geral, recebe, paga, moradia, ganhos, gastos, totG, totP, sobra };
+  return { pessoa, geral, recebe, paga, moradia, morPartes, ganhos, gastos, totG, totP, sobra };
 }
 function vEu() {
-  const { pessoa, geral, recebe, paga, moradia, ganhos, gastos, totG, totP, sobra } = dadosEu();
+  const { pessoa, geral, recebe, paga, moradia, morPartes, ganhos, gastos, totG, totP, sobra } = dadosEu();
   const outroNome = C.NOME[C.outro(pessoa)];
   const item = (p) => `<li>
     <span class="barra p-${pessoa}"></span>
@@ -786,7 +792,9 @@ function vEu() {
         <div class="grupo-cab"><h3>Gastos</h3></div>
         <ul class="lista">
           ${paga ? auto_('Acerto do casal', `pago a ${outroNome}`, paga) : ''}
-          ${auto_('Moradia', 'metade das contas da casa', moradia)}
+          ${morPartes.aluguel ? auto_('Aluguel', 'sua metade', morPartes.aluguel) : ''}
+          ${morPartes.condominio ? auto_('Condomínio', 'sua metade', morPartes.condominio) : ''}
+          ${morPartes.contas ? auto_('Contas da moradia', 'sua metade de internet, água, energia e gás', morPartes.contas) : ''}
           ${gastos.map(item).join('')}
         </ul>
       </div>
@@ -805,10 +813,12 @@ function vEu() {
   </form>`;
 }
 function gEu() {
-  const { paga, moradia, gastos } = dadosEu();
+  const { paga, morPartes, gastos } = dadosEu();
   const itens = [
     { tipo: 'ACERTO DO CASAL', valor: paga },
-    { tipo: 'MORADIA', valor: moradia },
+    { tipo: 'ALUGUEL', valor: morPartes.aluguel },
+    { tipo: 'CONDOMÍNIO', valor: morPartes.condominio },
+    { tipo: 'CONTAS DA MORADIA', valor: morPartes.contas },
     ...gastos.map((g) => ({ tipo: g.tipo, valor: Number(g.valor) })),
   ];
   const tipos = C.porTipo(itens);
