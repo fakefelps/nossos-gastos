@@ -3,11 +3,11 @@
 // =====================================================================
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import * as C from './calc.js';
+import * as C from './calc.js?v=2';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const ABAS = ['acerto', 'lancar', 'parceladas', 'moradia', 'historico', 'eu'];
+const ABAS = ['acerto', 'lancar', 'moradia', 'historico', 'eu'];
 const S = {
   user: null,
   perfil: null,
@@ -15,7 +15,7 @@ const S = {
   aba: 'acerto',
   d: { lancamentos: [], parceladas: [], moradia: [], legado: [], pessoais: [] },
   edit: { lanc: null, parc: null },
-  f: { cat: 'COMPARTILHADO', pagador: 'FELIPE', pPag: 'FELIPE', div: '50/50', fim: 'REC', nat: 'GASTO', grafMor: 'ENERGIA', periodo: '12', morMes: null },
+  f: { cat: 'COMPARTILHADO', pagador: 'FELIPE', div: '50/50', fim: 'REC', nat: 'GASTO', grafMor: 'ENERGIA', periodo: '12', morMes: null },
   charts: [],
   ultimaCarga: 0,
 };
@@ -142,7 +142,6 @@ async function entrarNoApp(user) {
   }
   S.perfil = perfil;
   S.f.pagador = perfil.pessoa;
-  S.f.pPag = perfil.pessoa;
   try { await carregarTudo(); } catch (e) { falha(e, 'Erro ao carregar'); }
   $('#tela-login').hidden = true;
   $('#tela-app').hidden = false;
@@ -151,6 +150,7 @@ async function entrarNoApp(user) {
   chip.className = `chip-pessoa p-${perfil.pessoa}`;
   const h = location.hash.replace('#', '');
   if (ABAS.includes(h)) S.aba = h;
+  else if (h === 'parceladas') S.aba = 'lancar';
   carregando(false);
   render();
 }
@@ -170,12 +170,12 @@ function render() {
   $('#mes-nome').textContent = C.cap(C.nomeMes(S.mes));
   $$('.abas button').forEach((b) => b.setAttribute('aria-current', b.dataset.aba === S.aba ? 'page' : 'false'));
   const v = $('#view');
-  const fn = { acerto: vAcerto, lancar: vLancar, parceladas: vParceladas, moradia: vMoradia, historico: vHistorico, eu: vEu }[S.aba];
+  const fn = { acerto: vAcerto, lancar: vLancar, moradia: vMoradia, historico: vHistorico, eu: vEu }[S.aba];
   v.innerHTML = fn();
   atualizarDependentes(v);
   const pos = { acerto: gAcerto, moradia: gMoradia, historico: gHistorico, eu: gEu }[S.aba];
   if (pos && window.Chart) { configurarChart(); pos(); }
-  if (S.aba === 'parceladas') previaParc($('[data-form=parc]'));
+  if (S.aba === 'lancar') previaParc($('[data-form=lanc]'));
 }
 
 function irPara(aba) {
@@ -217,46 +217,82 @@ function atualizarDependentes(raiz = document) {
 }
 
 // =====================================================================
-// ABA: ACERTO
+// ABA: ACERTO (moradia NÃO entra: cada um paga a sua metade)
 // =====================================================================
 function dadosDoMes(mes = S.mes) {
   const itens = C.itensDoMes(S.d.lancamentos, S.d.parceladas, mes);
   const mor = C.moradiaDoMes(S.d.moradia, mes);
   const a = C.acerto(itens);
-  const am = C.acertoMoradia(mor);
-  const geral = C.transferenciaDe(a.transferencia.saldo + am.transferencia.saldo);
-  return { itens, mor, a, am, geral };
+  const geral = a.transferencia;
+  return { itens, mor, a, geral };
 }
 const frase = (t) => (t.valor === 0 ? 'ninguém deve nada' : `${C.NOME[t.de]} passa ${C.brl(t.valor)} para ${C.NOME[t.para]}`);
+const ORIGEM_TXT = { COMPARTILHADO: '50/50', PARA_OUTRO: 'comprou para o outro', PARCELADA: 'parcela' };
 
 function vAcerto() {
-  const { itens, mor, a, am, geral } = dadosDoMes();
+  const { itens, a, geral } = dadosDoMes();
   const ro = C.resumoPorOrigem(itens);
-  const totMor = { FELIPE: am.pagou.FELIPE, MARIANA: am.pagou.MARIANA, total: am.total };
+  // quanto cada um deve ao outro antes de compensar
+  const marDeve = a.receber.FELIPE;   // parte da Mariana no que o Felipe pagou
+  const felDeve = a.receber.MARIANA;  // parte do Felipe no que a Mariana pagou
 
-  const heroi = geral.valor === 0
-    ? `<p class="heroi-zerado">${itens.length || mor.length ? 'Tudo empatado, ninguém deve nada.' : `Nada lançado em ${C.nomeMes(S.mes)}.`}</p>
-       ${itens.length || mor.length ? '' : '<button class="btn btn-cheio" data-acao="aba" data-v="lancar">Lançar o primeiro gasto</button>'}`
-    : `<div class="acerto-frase" style="--cor-de: var(--${geral.de.toLowerCase()}); --cor-para: var(--${geral.para.toLowerCase()})">
-         <span class="nome-grande de p-${geral.de}">${C.NOME[geral.de]}</span>
-         <div class="seta" aria-hidden="true"></div>
-         <strong class="valor-acerto">${C.brl(geral.valor)}</strong>
-         <span class="nome-grande para p-${geral.para}">${C.NOME[geral.para]}</span>
-       </div>
-       <p class="heroi-legenda">${C.NOME[geral.de]} passa ${C.brl(geral.valor)} para ${C.NOME[geral.para]} no fechamento do mês.</p>`;
+  let heroi;
+  if (!itens.length) {
+    heroi = `<p class="heroi-zerado">Nada lançado em ${C.nomeMes(S.mes)}.</p>
+      <button class="btn btn-cheio" data-acao="aba" data-v="lancar">Lançar o primeiro gasto</button>`;
+  } else if (geral.valor === 0) {
+    heroi = '<p class="heroi-zerado">Tudo empatado, ninguém deve nada.</p>';
+  } else {
+    heroi = `<div class="acerto-frase" style="--cor-de: var(--${geral.de.toLowerCase()}); --cor-para: var(--${geral.para.toLowerCase()})">
+        <span class="nome-grande de p-${geral.de}">${C.NOME[geral.de]}</span>
+        <div class="seta" aria-hidden="true"></div>
+        <strong class="valor-acerto">${C.brl(geral.valor)}</strong>
+        <span class="nome-grande para p-${geral.para}">${C.NOME[geral.para]}</span>
+      </div>
+      <p class="heroi-legenda"><strong>No fechamento do mês, ${C.NOME[geral.de]} paga ${C.brl(geral.valor)} para ${C.NOME[geral.para]}.</strong></p>`;
+  }
+
+  const contaAcerto = itens.length ? `
+    <div class="conta-acerto">
+      <p class="rot">Como chegamos nesse valor</p>
+      <div class="ln"><span>Mariana deve ao Felipe</span><span class="col-m">${C.brl(marDeve)}</span></div>
+      <div class="ln"><span>Felipe deve à Mariana</span><span class="col-f">− ${C.brl(felDeve)}</span></div>
+      <div class="ln res"><span>${geral.valor ? `${C.NOME[geral.de]} paga para ${C.NOME[geral.para]}` : 'Diferença'}</span><span>${C.brl(geral.valor)}</span></div>
+    </div>` : '';
 
   const linha = (nome, o) => `<tr><td>${nome}</td><td class="n col-f">${C.brl(o.FELIPE)}</td><td class="n col-m">${C.brl(o.MARIANA)}</td><td class="n">${C.brl(o.total)}</td></tr>`;
   const tipos = C.porTipo(itens);
+  const ordenados = [...itens].sort((x, y) => (x.pagador === y.pagador ? y.valor - x.valor : x.pagador < y.pagador ? -1 : 1));
+  const linhaItem = (it) => {
+    const dev = C.outro(it.pagador);
+    return `<tr><td>${esc(it.descricao || it.tipo)}<span class="selo">${ORIGEM_TXT[it.origem]}</span></td>
+      <td class="${it.pagador === 'FELIPE' ? 'col-f' : 'col-m'}">${C.NOME[it.pagador]}</td>
+      <td class="n">${C.brl(it.valor)}</td>
+      <td class="n ${dev === 'FELIPE' ? 'col-f' : 'col-m'}">${C.NOME[dev]} deve ${C.brl(C.parteDoOutro(it))}</td></tr>`;
+  };
 
   return `
   <section class="heroi">
     <p class="heroi-rotulo">Acerto de ${C.nomeMes(S.mes)}</p>
     ${heroi}
-    <dl class="partes">
-      <div><dt>Gastos do mês (50/50, para o outro e parcelas)</dt><dd>${frase(a.transferencia)}</dd></div>
-      <div><dt>Moradia</dt><dd>${mor.length ? frase(am.transferencia) : 'nada lançado'}</dd></div>
-    </dl>
+    ${contaAcerto}
+    <p class="nota nota-moradia">Moradia não entra no acerto: cada um paga a sua metade.</p>
   </section>
+
+  ${itens.length ? `
+  <section class="bloco">
+    <details class="detalhe">
+      <summary>Item a item: quem deve o quê</summary>
+      <div class="tabela-wrap"><table>
+        <thead><tr><th>Item</th><th>Pagou</th><th class="n">Valor</th><th class="n">Quem deve</th></tr></thead>
+        <tbody>${ordenados.map(linhaItem).join('')}
+          <tr class="total"><td colspan="3">Mariana deve ao Felipe</td><td class="n col-m">${C.brl(marDeve)}</td></tr>
+          <tr class="total"><td colspan="3">Felipe deve à Mariana</td><td class="n col-f">${C.brl(felDeve)}</td></tr>
+          <tr class="total"><td colspan="3">Resultado</td><td class="n">${frase(geral)}</td></tr>
+        </tbody>
+      </table></div>
+    </details>
+  </section>` : ''}
 
   <section class="bloco">
     <h2>Quem pagou o quê</h2>
@@ -265,12 +301,10 @@ function vAcerto() {
       <tbody>
         ${linha('Divididos 50/50', ro.COMPARTILHADO)}
         ${linha('Compras para o outro', ro.PARA_OUTRO)}
-        ${linha('Parceladas e recorrentes', ro.PARCELADA)}
-        <tr class="total"><td>Gastos do mês</td><td class="n col-f">${C.brl(a.pagou.FELIPE)}</td><td class="n col-m">${C.brl(a.pagou.MARIANA)}</td><td class="n">${C.brl(a.total)}</td></tr>
-        ${linha('Moradia', totMor)}
+        ${linha('Parceladas e fixas', ro.PARCELADA)}
+        <tr class="total"><td>Total</td><td class="n col-f">${C.brl(a.pagou.FELIPE)}</td><td class="n col-m">${C.brl(a.pagou.MARIANA)}</td><td class="n">${C.brl(a.total)}</td></tr>
       </tbody>
     </table></div>
-    <p class="nota" style="margin-top:10px">Cada um tem a receber: Felipe ${C.brl(a.receber.FELIPE + am.receber.FELIPE)}, Mariana ${C.brl(a.receber.MARIANA + am.receber.MARIANA)}. A diferença é o valor do acerto.</p>
   </section>
 
   <section class="bloco">
@@ -293,48 +327,82 @@ function gAcerto() {
 }
 
 // =====================================================================
-// ABA: LANÇAR (50/50 e PARA O OUTRO)
+// LANÇAR — um só formulário: 50/50, para o outro ou parcelado/fixo
 // =====================================================================
 function vLancar() {
-  const ed = S.edit.lanc ? S.d.lancamentos.find((l) => l.id === S.edit.lanc) : null;
+  const edL = S.edit.lanc ? S.d.lancamentos.find((l) => l.id === S.edit.lanc) : null;
+  const edP = S.edit.parc ? S.d.parceladas.find((p) => p.id === S.edit.parc) : null;
+  const ed = edL || edP;
   const doMes = S.d.lancamentos.filter((l) => l.mes === S.mes);
-  const grupo = (cat, titulo) => {
-    const lista = doMes.filter((l) => l.categoria === cat).sort((x, y) => (x.criado_em < y.criado_em ? 1 : -1));
+  const ps = S.d.parceladas;
+  const ativas = ps.filter((p) => C.parcelaAtiva(p, S.mes));
+  const futuras = ps.filter((p) => p.mes_inicio > S.mes);
+  const fim = ps.filter((p) => p.mes_fim && p.mes_fim < S.mes);
+  const inicio = edP ? edP.mes_inicio : S.mes;
+
+  const opcoes = edP ? [['PARCELA', 'Parcelado / fixo']]
+    : edL ? [['COMPARTILHADO', 'Dividir 50/50'], ['PARA_OUTRO', 'Comprei p/ o outro']]
+      : [['COMPARTILHADO', 'Dividir 50/50'], ['PARA_OUTRO', 'Comprei p/ o outro'], ['PARCELA', 'Parcelado / fixo']];
+
+  const totais = (lista) => {
     const tot = { FELIPE: 0, MARIANA: 0 };
     lista.forEach((l) => { tot[l.pagador] += Number(l.valor); });
+    return `<span class="grupo-tot"><span class="col-f">Felipe ${C.brl(tot.FELIPE)}</span> &nbsp; <span class="col-m">Mariana ${C.brl(tot.MARIANA)}</span></span>`;
+  };
+  const grupo = (cat, titulo) => {
+    const lista = doMes.filter((l) => l.categoria === cat).sort((x, y) => (x.criado_em < y.criado_em ? 1 : -1));
     return `
     <div class="grupo">
-      <div class="grupo-cab"><h3>${titulo}</h3>
-        <span class="grupo-tot"><span class="col-f">Felipe ${C.brl(tot.FELIPE)}</span> &nbsp; <span class="col-m">Mariana ${C.brl(tot.MARIANA)}</span></span></div>
+      <div class="grupo-cab"><h3>${titulo}</h3>${totais(lista)}</div>
       ${lista.length ? `<ul class="lista">${lista.map(itemLanc).join('')}</ul>` : '<p class="vazio">Nenhum lançamento.</p>'}
     </div>`;
   };
+
   return `
   <div class="duas duas-form">
     <form class="bloco form" data-form="lanc">
       <h2>${ed ? 'Editar lançamento' : 'Novo lançamento'}</h2>
-      ${seg('cat', [['COMPARTILHADO', 'Dividir 50/50'], ['PARA_OUTRO', 'Comprei para o outro']])}
+      <div><span class="rotulo">O que é</span>${seg('cat', opcoes)}</div>
       <p class="nota" data-quando="cat=COMPARTILHADO">Cada um paga metade. Vale só para este mês.</p>
       <p class="nota" data-quando="cat=PARA_OUTRO">Quem não pagou devolve o valor inteiro.</p>
+      <p class="nota" data-quando="cat=PARCELA">Compra parcelada ou conta fixa: entra sozinha nos meses seguintes.</p>
       <label>Tipo
         <input type="text" name="tipo" id="lanc-tipo" list="dl-tipos" required autocomplete="off" value="${esc(ed?.tipo || '')}">
       </label>
       ${chips('lanc-tipo', C.TIPOS_CASAL)}
-      ${datalist('dl-tipos', C.TIPOS_CASAL, S.d.lancamentos.map((l) => l.tipo))}
-      <label><span>Descrição <span class="campo-dica">opcional</span></span>
+      ${datalist('dl-tipos', C.TIPOS_CASAL, [...S.d.lancamentos.map((l) => l.tipo), ...ps.map((p) => p.tipo)])}
+      <label><span>Descrição <span class="campo-dica" data-quando="cat=COMPARTILHADO">opcional</span><span class="campo-dica" data-quando="cat=PARA_OUTRO">opcional</span></span>
         <input type="text" name="descricao" autocomplete="off" value="${esc(ed?.descricao || '')}">
       </label>
-      ${campoValor('valor', ed ? valorParaCampo(ed) : '')}
+      ${campoValor('valor', edL ? valorParaCampo(edL) : edP ? String(edP.valor).replace('.', ',') : '', 'pode digitar a conta: 671,61-25,16')}
+      <p class="nota" data-quando="cat=PARCELA">No parcelado, informe o valor de UMA parcela (pode digitar 1100/10).</p>
       <div><span class="rotulo">Quem pagou</span>${pagadorBtns('pagador')}</div>
+
+      <div class="form" data-quando="cat=PARCELA">
+        <div><span class="rotulo">Como fica</span>${seg('div', [['50/50', 'Dividir 50/50'], ['INTEGRAL', 'O outro paga tudo']])}</div>
+        <label>Primeira parcela em <input type="month" name="inicio" value="${C.mesParaInput(inicio)}"></label>
+        <div><span class="rotulo">Termina</span>${seg('fim', [['REC', 'Fixo todo mês'], ['QTD', 'Nº de parcelas'], ['MES', 'Em um mês']])}</div>
+        <label data-quando="fim=QTD">Quantidade de parcelas <input type="number" name="qtd" min="1" max="360" step="1" value="${edP?.mes_fim ? C.difMeses(edP.mes_inicio, edP.mes_fim) + 1 : ''}"></label>
+        <label data-quando="fim=MES">Última parcela em <input type="month" name="fim" value="${C.mesParaInput(edP?.mes_fim || '')}"></label>
+        <p class="nota" id="parc-previa"></p>
+      </div>
+
       <div class="acoes">
-        <button type="submit" class="btn btn-cheio">${ed ? 'Salvar alteração' : 'Salvar lançamento'}</button>
-        ${ed ? '<button type="button" class="btn" data-acao="cancelar-lanc">Cancelar</button>' : ''}
+        <button type="submit" class="btn btn-cheio">${ed ? 'Salvar alteração' : 'Salvar'}</button>
+        ${ed ? '<button type="button" class="btn" data-acao="cancelar-edicao">Cancelar</button>' : ''}
       </div>
     </form>
+
     <section class="bloco">
-      <div class="bloco-cab"><h2>Lançados em ${C.nomeMes(S.mes)}</h2><span class="nota">${doMes.length} ${doMes.length === 1 ? 'item' : 'itens'}</span></div>
+      <div class="bloco-cab"><h2>Lançados em ${C.nomeMes(S.mes)}</h2><span class="nota">${doMes.length + ativas.length} ${doMes.length + ativas.length === 1 ? 'item' : 'itens'}</span></div>
       ${grupo('COMPARTILHADO', 'Divididos 50/50')}
       ${grupo('PARA_OUTRO', 'Compras para o outro')}
+      <div class="grupo">
+        <div class="grupo-cab"><h3>Parceladas e fixas</h3>${totais(ativas)}</div>
+        ${ativas.length ? `<ul class="lista">${ativas.map((p) => itemParc(p, true)).join('')}</ul>` : '<p class="vazio">Nenhuma parcela neste mês.</p>'}
+      </div>
+      ${futuras.length ? `<div class="grupo"><h3>Começam depois</h3><ul class="lista">${futuras.map((p) => itemParc(p)).join('')}</ul></div>` : ''}
+      ${fim.length ? `<div class="grupo"><h3>Já terminaram</h3><ul class="lista">${fim.map((p) => itemParc(p)).join('')}</ul></div>` : ''}
     </section>
   </div>`;
 }
@@ -375,54 +443,10 @@ async function salvarLanc(form) {
   render();
   $('#lanc-tipo')?.focus();
 }
-
-// =====================================================================
-// ABA: PARCELADAS / RECORRENTES
-// =====================================================================
-function vParceladas() {
-  const ed = S.edit.parc ? S.d.parceladas.find((p) => p.id === S.edit.parc) : null;
-  const ps = S.d.parceladas;
-  const ativas = ps.filter((p) => C.parcelaAtiva(p, S.mes));
-  const futuras = ps.filter((p) => p.mes_inicio > S.mes);
-  const fim = ps.filter((p) => p.mes_fim && p.mes_fim < S.mes);
-  const a = C.acerto(C.itensDoMes([], ps, S.mes));
-  const inicio = ed ? ed.mes_inicio : S.mes;
-
-  return `
-  <div class="duas duas-form">
-    <form class="bloco form" data-form="parc">
-      <h2>${ed ? 'Editar compra' : 'Nova compra parcelada ou recorrente'}</h2>
-      <label>Descrição <input type="text" name="descricao" required autocomplete="off" value="${esc(ed?.descricao || '')}"></label>
-      <label>Tipo <input type="text" name="tipo" id="parc-tipo" list="dl-tipos-p" required autocomplete="off" value="${esc(ed?.tipo || '')}"></label>
-      ${chips('parc-tipo', C.TIPOS_CASAL)}
-      ${datalist('dl-tipos-p', C.TIPOS_CASAL, ps.map((p) => p.tipo))}
-      ${campoValor('valor', ed ? String(ed.valor).replace('.', ',') : '', 'valor de UMA parcela; pode digitar 1100/10')}
-      <div><span class="rotulo">Passou no cartão de</span>${pagadorBtns('pPag')}</div>
-      <div><span class="rotulo">Como fica</span>${seg('div', [['50/50', 'Dividir 50/50'], ['INTEGRAL', 'O outro paga tudo']])}</div>
-      <label>Primeira parcela em <input type="month" name="inicio" required value="${C.mesParaInput(inicio)}"></label>
-      <div><span class="rotulo">Termina</span>${seg('fim', [['REC', 'Recorrente'], ['QTD', 'Nº de parcelas'], ['MES', 'Em um mês']])}</div>
-      <label data-quando="fim=QTD">Quantidade de parcelas <input type="number" name="qtd" min="1" max="360" step="1" value="${ed?.mes_fim ? C.difMeses(ed.mes_inicio, ed.mes_fim) + 1 : ''}"></label>
-      <label data-quando="fim=MES">Última parcela em <input type="month" name="fim" value="${C.mesParaInput(ed?.mes_fim || '')}"></label>
-      <p class="nota" id="parc-previa"></p>
-      <div class="acoes">
-        <button type="submit" class="btn btn-cheio">${ed ? 'Salvar alteração' : 'Salvar compra'}</button>
-        ${ed ? '<button type="button" class="btn" data-acao="cancelar-parc">Cancelar</button>' : ''}
-      </div>
-    </form>
-
-    <section class="bloco">
-      <div class="bloco-cab"><h2>Entram em ${C.nomeMes(S.mes)}</h2>
-        <span class="nota">${ativas.length ? frase(a.transferencia) : ''}</span></div>
-      ${ativas.length ? `<ul class="lista">${ativas.map((p) => itemParc(p, true)).join('')}</ul>` : '<p class="vazio">Nenhuma parcela neste mês.</p>'}
-      ${futuras.length ? `<div class="grupo"><h3>Começam depois</h3><ul class="lista">${futuras.map((p) => itemParc(p)).join('')}</ul></div>` : ''}
-      ${fim.length ? `<div class="grupo"><h3>Já terminaram</h3><ul class="lista">${fim.map((p) => itemParc(p)).join('')}</ul></div>` : ''}
-    </section>
-  </div>`;
-}
 function itemParc(p, ativa = false) {
   const inf = C.infoParcela(p, S.mes);
   const selo = inf.recorrente
-    ? '<span class="selo ouro">recorrente</span>'
+    ? '<span class="selo ouro">fixo</span>'
     : ativa ? `<span class="selo ouro">${inf.atual} de ${inf.total}</span>` : `<span class="selo">${inf.total}x</span>`;
   const quem = p.divisao === '50/50'
     ? `${C.NOME[p.pagador]} pagou, dividido 50/50`
@@ -441,15 +465,15 @@ function itemParc(p, ativa = false) {
   </li>`;
 }
 function calcularFimParc(form) {
-  const inicio = C.inputParaMes(form.inicio.value);
+  const inicio = C.inputParaMes(form.elements.inicio.value);
   if (!inicio) return { erro: 'Informe o mês da primeira parcela' };
   if (S.f.fim === 'REC') return { inicio, fim: null };
   if (S.f.fim === 'QTD') {
-    const n = parseInt(form.qtd.value, 10);
+    const n = parseInt(form.elements.qtd.value, 10);
     if (!n || n < 1) return { erro: 'Informe a quantidade de parcelas' };
     return { inicio, fim: C.somaMes(inicio, n - 1) };
   }
-  const fim = C.inputParaMes(form.fim.value);
+  const fim = C.inputParaMes(form.elements.fim.value);
   if (!fim) return { erro: 'Informe o mês da última parcela' };
   if (fim < inicio) return { erro: 'A última parcela é antes da primeira' };
   return { inicio, fim };
@@ -470,11 +494,12 @@ async function salvarParc(form) {
   if (v.valor <= 0) return toast('O valor precisa ser maior que zero', true);
   const per = calcularFimParc(form);
   if (per.erro) return toast(per.erro, true);
+  if (!fd.get('descricao').trim()) return toast('No parcelado, informe a descrição', true);
   const reg = {
     descricao: fd.get('descricao').trim(),
     tipo: normTipo(fd.get('tipo')),
     valor: v.valor,
-    pagador: S.f.pPag,
+    pagador: S.f.pagador,
     divisao: S.f.div,
     mes_inicio: per.inicio,
     mes_fim: per.fim,
@@ -484,7 +509,8 @@ async function salvarParc(form) {
     : sb.from('parceladas').insert(reg);
   const { error } = await q;
   if (error) return falha(error, 'Não salvou');
-  toast(S.edit.parc ? 'Alteração salva' : 'Compra salva');
+  toast(S.edit.parc ? 'Alteração salva' : 'Parcelado salvo');
+  if (S.edit.parc) S.f.cat = 'COMPARTILHADO';
   S.edit.parc = null;
   S.f.fim = 'REC';
   await recarregar('parceladas');
@@ -496,13 +522,7 @@ async function salvarParc(form) {
 // =====================================================================
 function vMoradia() {
   const doMes = C.moradiaDoMes(S.d.moradia, S.mes);
-  if (S.f.morMes !== S.mes) {
-    C.CONTAS_MORADIA.forEach((c) => {
-      S.f[`mp_${c.id}`] = doMes.find((m) => m.conta === c.id)?.pagador || S.perfil.pessoa;
-    });
-    S.f.morMes = S.mes;
-  }
-  const am = C.acertoMoradia(doMes);
+  const totMor = C.r2(doMes.reduce((a, m) => a + Number(m.valor), 0));
   const linhas = C.CONTAS_MORADIA.map((c) => {
     const r = doMes.find((m) => m.conta === c.id);
     const unit = r && c.unidade && Number(r.consumo) > 0 ? `${C.brl(r.valor / r.consumo)} por ${c.unidade}` : '';
@@ -513,22 +533,20 @@ function vMoradia() {
         <input type="text" name="v_${c.id}" data-previa autocomplete="off" placeholder="R$" value="${r ? valorParaCampo(r) : ''}">
       </label>
       ${c.unidade ? `<label>Consumo <span class="com-unidade"><input type="text" inputmode="decimal" name="c_${c.id}" autocomplete="off" value="${r?.consumo != null ? String(Number(r.consumo)).replace('.', ',') : ''}"><span>${c.unidade}</span></span></label>` : '<span></span>'}
-      <div><span class="rotulo">Pagou</span>${pagadorBtns(`mp_${c.id}`, true)}</div>
     </div>`;
   }).join('');
 
   return `
   <section class="numeros">
-    <div class="numero"><dt>Moradia em ${C.nomeMes(S.mes, true)}</dt><dd>${C.brl(am.total)}</dd></div>
-    <div class="numero"><dt>Parte de cada um</dt><dd>${C.brl(am.total / 2)}</dd></div>
-    <div class="numero destaque"><dt>Acerto da moradia</dt><dd style="font-size:1.1rem">${doMes.length ? frase(am.transferencia) : 'nada lançado'}</dd></div>
+    <div class="numero"><dt>Moradia em ${C.nomeMes(S.mes, true)}</dt><dd>${C.brl(totMor)}</dd></div>
+    <div class="numero destaque"><dt>Parte de cada um</dt><dd>${C.brl(totMor / 2)}</dd></div>
   </section>
 
   <form class="bloco form" data-form="moradia">
     <div class="bloco-cab"><h2>Contas de ${C.nomeMes(S.mes)}</h2>
       <button type="button" class="btn-texto" data-acao="repetir-fixos">Repetir aluguel, condomínio e internet do mês anterior</button></div>
     <div class="moradia-grade">${linhas}</div>
-    <p class="nota">Tudo aqui é dividido 50/50. Deixe o valor em branco para apagar a conta do mês.</p>
+    <p class="nota">Tudo aqui é dividido 50/50 e não entra no acerto: cada um paga a sua metade. Deixe o valor em branco para apagar a conta do mês.</p>
     <div class="acoes"><button type="submit" class="btn btn-cheio">Salvar moradia</button></div>
   </form>
 
@@ -590,8 +608,6 @@ function repetirFixos() {
     const inp = $(`[name=v_${c.id}]`);
     if (r && inp && !inp.value.trim()) {
       inp.value = String(r.valor).replace('.', ',');
-      S.f[`mp_${c.id}`] = r.pagador;
-      $$(`[data-grupo=mp_${c.id}] button`).forEach((b) => b.setAttribute('aria-pressed', b.dataset.v === r.pagador));
       n++;
     }
   });
@@ -601,17 +617,18 @@ async function salvarMoradia(form) {
   const doMes = C.moradiaDoMes(S.d.moradia, S.mes);
   const upserts = []; const apagar = [];
   for (const c of C.CONTAS_MORADIA) {
-    const txt = form[`v_${c.id}`].value.trim();
+    const txt = form.elements[`v_${c.id}`].value.trim();
     const existente = doMes.find((m) => m.conta === c.id);
     if (!txt) { if (existente) apagar.push(existente.id); continue; }
     const v = C.avaliarValor(txt);
     if (!v.ok || v.valor < 0) return toast(`${c.nome}: ${v.erro || 'valor inválido'}`, true);
     let consumo = null;
     if (c.unidade) {
-      const ct = form[`c_${c.id}`].value.trim().replace(',', '.');
+      const ct = form.elements[`c_${c.id}`].value.trim().replace(',', '.');
       if (ct) { consumo = Number(ct); if (!Number.isFinite(consumo) || consumo < 0) return toast(`${c.nome}: consumo inválido`, true); }
     }
-    upserts.push({ mes: S.mes, conta: c.id, valor: v.valor, consumo, pagador: S.f[`mp_${c.id}`] });
+    // "pagador" continua gravado só porque a coluna existe no banco; não é usado em nenhum cálculo
+    upserts.push({ mes: S.mes, conta: c.id, valor: v.valor, consumo, pagador: existente?.pagador || S.perfil.pessoa });
   }
   if (upserts.length) {
     const { error } = await sb.from('moradia').upsert(upserts, { onConflict: 'mes,conta' });
@@ -879,7 +896,7 @@ document.addEventListener('click', async (e) => {
       S.f[k] = v;
       $$(`[data-grupo="${k}"] button`).forEach((x) => x.setAttribute('aria-pressed', x.dataset.v === v));
       atualizarDependentes();
-      if (k === 'fim') previaParc($('[data-form=parc]'));
+      if (k === 'fim' || k === 'cat') previaParc($('[data-form=lanc]'));
       if (k === 'grafMor') desenharConsumo();
       if (k === 'periodo') render();
       if (k === 'nat') { const t = $('#pess-tipo'); if (t) t.value = ''; }
@@ -894,11 +911,13 @@ document.addEventListener('click', async (e) => {
 
     case 'editar-lanc': {
       const l = S.d.lancamentos.find((x) => x.id === n);
-      S.edit.lanc = n; S.f.cat = l.categoria; S.f.pagador = l.pagador;
+      S.edit = { lanc: n, parc: null }; S.f.cat = l.categoria; S.f.pagador = l.pagador;
       render(); $('[data-form=lanc]').scrollIntoView({ behavior: 'smooth' });
       return;
     }
-    case 'cancelar-lanc': S.edit.lanc = null; return render();
+    case 'cancelar-edicao':
+      S.edit = { lanc: null, parc: null }; S.f.cat = 'COMPARTILHADO'; S.f.fim = 'REC'; S.f.pagador = S.perfil.pessoa;
+      return render();
     case 'excluir-lanc': {
       const l = S.d.lancamentos.find((x) => x.id === n);
       if (!confirm(`Excluir ${l.descricao || l.tipo} de ${C.brl(l.valor)}?`)) return;
@@ -910,11 +929,10 @@ document.addEventListener('click', async (e) => {
 
     case 'editar-parc': {
       const p = S.d.parceladas.find((x) => x.id === n);
-      S.edit.parc = n; S.f.pPag = p.pagador; S.f.div = p.divisao; S.f.fim = p.mes_fim ? 'MES' : 'REC';
-      render(); previaParc($('[data-form=parc]')); $('[data-form=parc]').scrollIntoView({ behavior: 'smooth' });
+      S.edit = { lanc: null, parc: n }; S.f.cat = 'PARCELA'; S.f.pagador = p.pagador; S.f.div = p.divisao; S.f.fim = p.mes_fim ? 'MES' : 'REC';
+      render(); $('[data-form=lanc]').scrollIntoView({ behavior: 'smooth' });
       return;
     }
-    case 'cancelar-parc': S.edit.parc = null; S.f.fim = 'REC'; return render();
     case 'encerrar-parc': {
       const p = S.d.parceladas.find((x) => x.id === n);
       if (!confirm(`${p.descricao}: a última parcela passa a ser ${C.nomeMes(S.mes)}. Confirma?`)) return;
@@ -927,7 +945,7 @@ document.addEventListener('click', async (e) => {
       if (!confirm(`Excluir ${p.descricao}? Ela some de TODOS os meses, inclusive os anteriores. Para só parar de cobrar a partir deste mês, use Parar.`)) return;
       const { error } = await sb.from('parceladas').delete().eq('id', n);
       if (error) return falha(error, 'Não excluiu');
-      if (S.edit.parc === n) S.edit.parc = null;
+      if (S.edit.parc === n) { S.edit.parc = null; S.f.cat = 'COMPARTILHADO'; }
       toast('Excluída'); await recarregar('parceladas'); return render();
     }
 
@@ -951,8 +969,7 @@ document.addEventListener('submit', async (e) => {
   if (btn) btn.disabled = true;
   try {
     const f = form.dataset.form;
-    if (f === 'lanc') await salvarLanc(form);
-    else if (f === 'parc') await salvarParc(form);
+    if (f === 'lanc') await (S.f.cat === 'PARCELA' ? salvarParc(form) : salvarLanc(form));
     else if (f === 'moradia') await salvarMoradia(form);
     else if (f === 'pess') await salvarPess(form);
     else if (f === 'senha') {
@@ -976,7 +993,7 @@ document.addEventListener('input', (e) => {
     p.classList.toggle('erro', !r.ok);
     p.textContent = r.ok ? (r.expressao ? `= ${C.brl(r.valor)}` : '') : r.erro;
   }
-  const fp = el.closest('[data-form=parc]');
+  const fp = el.closest('[data-form=lanc]');
   if (fp && ['inicio', 'qtd', 'fim'].includes(el.name)) previaParc(fp);
 });
 
