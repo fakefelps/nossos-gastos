@@ -764,7 +764,9 @@ function vEu() {
     <div class="numero"><dt>Ganhos</dt><dd>${C.brl(totG)}</dd></div>
     <div class="numero"><dt>Gastos pessoais</dt><dd>${C.brl(totP)}</dd></div>
     ${cardAcerto}
-    <div class="numero"><dt>Sua parte da moradia</dt><dd>${C.brl(moradia)}</dd></div>
+    <div class="numero"><dt>Aluguel (sua metade)</dt><dd>${C.brl(morPartes.aluguel)}</dd></div>
+    <div class="numero"><dt>Condomínio (sua metade)</dt><dd>${C.brl(morPartes.condominio)}</dd></div>
+    <div class="numero"><dt>Contas da moradia (sua metade)</dt><dd>${C.brl(morPartes.contas)}</dd></div>
     <div class="numero destaque"><dt>Sobra do mês</dt><dd>${C.brl(sobra)}</dd></div>
   </section>
   <p class="nota">Esta área é só sua: ${outroNome} não vê seus ganhos nem gastos pessoais.</p>
