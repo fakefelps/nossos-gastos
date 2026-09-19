@@ -3,7 +3,7 @@
 // =====================================================================
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import * as C from './calc.js?v=2';
+import * as C from './calc.js?v=3';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -528,7 +528,7 @@ function vMoradia() {
     const unit = r && c.unidade && Number(r.consumo) > 0 ? `${C.brl(r.valor / r.consumo)} por ${c.unidade}` : '';
     return `
     <div class="conta">
-      <div class="conta-nome">${c.nome}${unit ? `<small>${unit}</small>` : ''}</div>
+      <div class="conta-nome">${c.nome}${r?.padrao ? '<small>valor padrão</small>' : ''}${unit ? `<small>${unit}</small>` : ''}</div>
       <label>Valor
         <input type="text" name="v_${c.id}" data-previa autocomplete="off" placeholder="R$" value="${r ? valorParaCampo(r) : ''}">
       </label>
@@ -543,10 +543,9 @@ function vMoradia() {
   </section>
 
   <form class="bloco form" data-form="moradia">
-    <div class="bloco-cab"><h2>Contas de ${C.nomeMes(S.mes)}</h2>
-      <button type="button" class="btn-texto" data-acao="repetir-fixos">Repetir aluguel, condomínio e internet do mês anterior</button></div>
+    <div class="bloco-cab"><h2>Contas de ${C.nomeMes(S.mes)}</h2></div>
     <div class="moradia-grade">${linhas}</div>
-    <p class="nota">Tudo aqui é dividido 50/50 e não entra no acerto: cada um paga a sua metade. Deixe o valor em branco para apagar a conta do mês.</p>
+    <p class="nota">Tudo aqui é dividido 50/50 e não entra no acerto: cada um paga a sua metade. Os valores padrão já entram sozinhos todo mês; é só trocar o valor e salvar quando a conta vier diferente. Deixe em branco para voltar ao valor padrão.</p>
     <div class="acoes"><button type="submit" class="btn btn-cheio">Salvar moradia</button></div>
   </form>
 
@@ -566,7 +565,7 @@ function gMoradia() {
   const labels = meses.map((m) => C.nomeMes(m, true));
   barrasEmpilhadas('g-mor-valor', labels, C.CONTAS_MORADIA.map((c) => ({
     label: c.nome,
-    data: meses.map((m) => Number(S.d.moradia.find((x) => x.mes === m && x.conta === c.id)?.valor || 0)),
+    data: meses.map((m) => Number(C.moradiaDoMes(S.d.moradia, m).find((x) => x.conta === c.id)?.valor || 0)),
     backgroundColor: corTipo(c.id),
   })));
   desenharConsumo();
@@ -574,7 +573,7 @@ function gMoradia() {
 function desenharConsumo() {
   const conta = C.CONTAS_MORADIA.find((c) => c.id === S.f.grafMor);
   const meses = C.listaMeses(S.mes, 12);
-  const reg = meses.map((m) => S.d.moradia.find((x) => x.mes === m && x.conta === conta.id));
+  const reg = meses.map((m) => C.moradiaDoMes(S.d.moradia, m).find((x) => x.conta === conta.id));
   const el = document.getElementById('g-mor-consumo');
   if (!el) return;
   const antigo = Chart.getChart(el);
@@ -614,7 +613,7 @@ function repetirFixos() {
   toast(n ? 'Preenchido. Confira e clique em Salvar moradia.' : `Nada para repetir de ${C.nomeMes(ant)}.`, !n);
 }
 async function salvarMoradia(form) {
-  const doMes = C.moradiaDoMes(S.d.moradia, S.mes);
+  const doMes = C.moradiaSalva(S.d.moradia, S.mes);
   const upserts = []; const apagar = [];
   for (const c of C.CONTAS_MORADIA) {
     const txt = form.elements[`v_${c.id}`].value.trim();

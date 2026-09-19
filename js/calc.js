@@ -19,13 +19,16 @@ export const TIPOS_GASTO_PESSOAL = [
 export const TIPOS_GANHO = ['SALÁRIO', 'FREELA', 'EXTRA', 'RENDIMENTO', 'REEMBOLSO', 'OUTROS'];
 
 export const CONTAS_MORADIA = [
-  { id: 'ALUGUEL',    nome: 'Aluguel',    unidade: null,  fixa: true },
-  { id: 'CONDOMINIO', nome: 'Condomínio', unidade: null,  fixa: true },
-  { id: 'INTERNET',   nome: 'Internet',   unidade: null,  fixa: true },
-  { id: 'AGUA',       nome: 'Água',       unidade: 'm³',  fixa: false },
-  { id: 'ENERGIA',    nome: 'Energia',    unidade: 'kWh', fixa: false },
-  { id: 'GAS',        nome: 'Gás',        unidade: 'm³',  fixa: false },
+  { id: 'ALUGUEL',    nome: 'Aluguel',    unidade: null,  fixa: true,  padrao: 710.00 },
+  { id: 'CONDOMINIO', nome: 'Condomínio', unidade: null,  fixa: true,  padrao: 240.00 },
+  { id: 'INTERNET',   nome: 'Internet',   unidade: null,  fixa: true,  padrao: 99.99 },
+  { id: 'AGUA',       nome: 'Água',       unidade: 'm³',  fixa: false, padrao: 160.01 },
+  { id: 'ENERGIA',    nome: 'Energia',    unidade: 'kWh', fixa: false, padrao: 200.00 },
+  { id: 'GAS',        nome: 'Gás',        unidade: 'm³',  fixa: false, padrao: 40.00 },
 ];
+// Valor padrão vale deste mês em diante, para todo mês/conta que não tiver valor salvo.
+// Meses anteriores ficam só com o que foi lançado.
+export const MORADIA_PADRAO_DESDE = '2026-09-01';
 
 // ---------- dinheiro ----------
 export const r2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
@@ -213,8 +216,21 @@ export function porTipo(itens, campoValor = (it) => it.valor) {
 }
 
 // ---------- moradia (tudo 50/50) ----------
-export function moradiaDoMes(moradia, mes) {
+// Só o que está gravado no banco
+export function moradiaSalva(moradia, mes) {
   return moradia.filter((m) => m.mes === mes);
+}
+// O que vale no mês: valor salvo ou, se não houver, o valor padrão da conta
+export function moradiaDoMes(moradia, mes) {
+  const salvas = moradiaSalva(moradia, mes);
+  if (mes < MORADIA_PADRAO_DESDE) return salvas;
+  const out = [...salvas];
+  for (const c of CONTAS_MORADIA) {
+    if (c.padrao != null && !salvas.some((m) => m.conta === c.id)) {
+      out.push({ id: null, mes, conta: c.id, valor: c.padrao, consumo: null, padrao: true });
+    }
+  }
+  return out;
 }
 export function acertoMoradia(linhas) {
   const itens = linhas.map((m) => ({
