@@ -56,7 +56,7 @@ const COR_FIXA = {
   VIAGEM: '#2E9C9C', 'FARMÁCIA': '#9E3D5C', ASSINATURAS: '#4C5FD5', CASA: '#8C6D1F', PET: '#5A7D2B',
   PRESENTES: '#A36A9E', 'SAÚDE': '#B8426F', OUTROS: '#8A8FA3',
   ALUGUEL: '#1F6F8B', CONDOMINIO: '#6B5CA5', INTERNET: '#2E9C9C', AGUA: '#4C5FD5', ENERGIA: '#C98406', GAS: '#D0672F',
-  'CASAL (DIA A DIA)': '#1F6F8B', MORADIA: '#6B5CA5', 'PLANILHA (SEM DETALHE)': '#B9C2BF',
+  'CASAL (DIA A DIA)': '#1F6F8B', 'ACERTO DO CASAL': '#1F6F8B', MORADIA: '#6B5CA5', 'PLANILHA (SEM DETALHE)': '#B9C2BF',
 };
 function corTipo(t) {
   if (COR_FIXA[t]) return COR_FIXA[t];
@@ -717,22 +717,22 @@ function gHistorico() {
 // =====================================================================
 function dadosEu() {
   const pessoa = S.perfil.pessoa;
-  const { itens, mor, geral } = dadosDoMes();
-  const auto = C.custoPessoalDoCasal(itens, mor, pessoa);
+  const { mor, geral } = dadosDoMes();
+  const moradia = C.custoPessoalDoCasal([], mor, pessoa).moradia;
+  // acerto do casal: entra como ganho (recebe) ou gasto (paga)
+  const recebe = geral.valor && geral.para === pessoa ? geral.valor : 0;
+  const paga = geral.valor && geral.de === pessoa ? geral.valor : 0;
   const meus = S.d.pessoais.filter((p) => p.mes === S.mes && p.dono === S.user.id);
   const ganhos = meus.filter((p) => p.natureza === 'GANHO');
   const gastos = meus.filter((p) => p.natureza === 'GASTO');
   const soma = (l) => C.r2(l.reduce((a, x) => a + Number(x.valor), 0));
   const totG = soma(ganhos); const totP = soma(gastos);
-  const sobra = C.r2(totG - totP - auto.casal - auto.moradia);
-  return { pessoa, auto, ganhos, gastos, totG, totP, sobra, geral };
+  const sobra = C.r2(totG + recebe - totP - paga - moradia);
+  return { pessoa, geral, recebe, paga, moradia, ganhos, gastos, totG, totP, sobra };
 }
 function vEu() {
-  const { pessoa, auto, ganhos, gastos, totG, totP, sobra, geral } = dadosEu();
-  let transf = 'Neste mês ninguém deve nada.';
-  if (geral.valor) transf = geral.de === pessoa
-    ? `Neste mês você passa ${C.brl(geral.valor)} para ${C.NOME[geral.para]}.`
-    : `Neste mês você recebe ${C.brl(geral.valor)} de ${C.NOME[geral.de]}.`;
+  const { pessoa, geral, recebe, paga, moradia, ganhos, gastos, totG, totP, sobra } = dadosEu();
+  const outroNome = C.NOME[C.outro(pessoa)];
   const item = (p) => `<li>
     <span class="barra p-${pessoa}"></span>
     <div><div class="titulo">${esc(p.descricao || p.tipo)}${p.descricao ? `<span class="selo">${esc(p.tipo)}</span>` : ''}</div></div>
@@ -743,15 +743,25 @@ function vEu() {
     <div><div class="titulo">${titulo}<span class="selo">automático</span></div><div class="sub">${sub}</div></div>
     <span class="valor">${C.brl(v)}</span><span class="ops"></span></li>`;
 
+  const cardAcerto = recebe
+    ? `<div class="numero"><dt>Acerto: você recebe</dt><dd class="desce">+&nbsp;${C.brl(recebe)}</dd></div>`
+    : paga
+      ? `<div class="numero"><dt>Acerto: você paga</dt><dd class="sobe">−&nbsp;${C.brl(paga)}</dd></div>`
+      : `<div class="numero"><dt>Acerto do mês</dt><dd>${C.brl(0)}</dd></div>`;
+  const listaGanhos = [
+    recebe ? auto_('Acerto do casal', `recebido de ${outroNome}`, recebe) : '',
+    ...ganhos.map(item),
+  ].join('');
+
   return `
   <section class="numeros">
     <div class="numero"><dt>Ganhos</dt><dd>${C.brl(totG)}</dd></div>
     <div class="numero"><dt>Gastos pessoais</dt><dd>${C.brl(totP)}</dd></div>
-    <div class="numero"><dt>Sua parte do casal</dt><dd>${C.brl(auto.casal)}</dd></div>
-    <div class="numero"><dt>Sua parte da moradia</dt><dd>${C.brl(auto.moradia)}</dd></div>
+    ${cardAcerto}
+    <div class="numero"><dt>Sua parte da moradia</dt><dd>${C.brl(moradia)}</dd></div>
     <div class="numero destaque"><dt>Sobra do mês</dt><dd>${C.brl(sobra)}</dd></div>
   </section>
-  <p class="nota">${transf} Esta área é só sua: ${C.NOME[C.outro(pessoa)]} não vê seus ganhos nem gastos pessoais.</p>
+  <p class="nota">Esta área é só sua: ${outroNome} não vê seus ganhos nem gastos pessoais.</p>
 
   <div class="duas duas-form">
     <form class="bloco form" data-form="pess">
@@ -770,13 +780,13 @@ function vEu() {
       <div class="grupo">
         <div class="grupo-cab"><h3>Ganhos</h3>
           <button type="button" class="btn-texto" data-acao="repetir-ganhos">Repetir ganhos do mês anterior</button></div>
-        ${ganhos.length ? `<ul class="lista">${ganhos.map(item).join('')}</ul>` : '<p class="vazio">Nenhum ganho lançado.</p>'}
+        ${listaGanhos ? `<ul class="lista">${listaGanhos}</ul>` : '<p class="vazio">Nenhum ganho lançado.</p>'}
       </div>
       <div class="grupo">
         <div class="grupo-cab"><h3>Gastos</h3></div>
         <ul class="lista">
-          ${auto_('Gastos do casal', '50/50, compras que fizeram para você e parcelas', auto.casal)}
-          ${auto_('Moradia', 'metade das contas da casa', auto.moradia)}
+          ${paga ? auto_('Acerto do casal', `pago a ${outroNome}`, paga) : ''}
+          ${auto_('Moradia', 'metade das contas da casa', moradia)}
           ${gastos.map(item).join('')}
         </ul>
       </div>
@@ -795,10 +805,10 @@ function vEu() {
   </form>`;
 }
 function gEu() {
-  const { auto, gastos } = dadosEu();
+  const { paga, moradia, gastos } = dadosEu();
   const itens = [
-    { tipo: 'CASAL (DIA A DIA)', valor: auto.casal },
-    { tipo: 'MORADIA', valor: auto.moradia },
+    { tipo: 'ACERTO DO CASAL', valor: paga },
+    { tipo: 'MORADIA', valor: moradia },
     ...gastos.map((g) => ({ tipo: g.tipo, valor: Number(g.valor) })),
   ];
   const tipos = C.porTipo(itens);
