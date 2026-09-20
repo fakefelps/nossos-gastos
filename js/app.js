@@ -14,8 +14,8 @@ const S = {
   mes: C.mesAtual(),
   aba: 'acerto',
   d: { lancamentos: [], parceladas: [], moradia: [], legado: [], pessoais: [], pessoaisFixos: [], caixinhas: [], pacientes: [] },
-  edit: { lanc: null, parc: null, pac: null },
-  f: { cat: 'COMPARTILHADO', pagador: 'FELIPE', div: '50/50', fim: 'REC', nat: 'GASTO', freq: 'UNICO', pacPlano: 'AVULSO', escopoPac: 'MES', grafMor: 'ENERGIA', periodo: '12', morMes: null },
+  edit: { lanc: null, parc: null, pac: null, pess: null, pessf: null, caixa: null },
+  f: { cat: 'COMPARTILHADO', pagador: 'FELIPE', div: '50/50', fim: 'REC', nat: 'GASTO', freq: 'UNICO', pacPlano: 'AVULSO', escopoPac: 'MES', grafMor: 'ENERGIA', periodo: '12', morMes: null, escopoFixo: 'DAQUI' },
   charts: [],
   ultimaCarga: 0,
 };
@@ -212,6 +212,7 @@ const campoValor = (nome, valorInicial = '', dica = 'pode digitar a conta: 671,6
     <input type="text" name="${nome}" data-previa required autocomplete="off" placeholder="0,00" value="${esc(valorInicial)}">
   </label>
   <p class="previa"></p>`;
+const semEdicao = () => ({ lanc: null, parc: null, pac: null, pess: null, pessf: null, caixa: null });
 const valorParaCampo = (reg) => (reg.expressao ? reg.expressao : String(reg.valor).replace('.', ','));
 
 function atualizarDependentes(raiz = document) {
@@ -745,15 +746,20 @@ function dadosEu() {
 function vEu() {
   const { pessoa, recebe, paga, morPartes, ganhos, gastos, pacientes, totPac, totG, totP, sobra, caixas } = dadosEu();
   const outroNome = C.NOME[C.outro(pessoa)];
+  const edU = S.edit.pess ? S.d.pessoais.find((p) => p.id === S.edit.pess) : null;
+  const edF = S.edit.pessf ? S.d.pessoaisFixos.find((p) => p.id === S.edit.pessf) : null;
+  const edE = edU || edF;
   const item = (p) => `<li>
     <span class="barra p-${pessoa}"></span>
     <div><div class="titulo">${esc(p.descricao || p.tipo)}${p.descricao ? `<span class="selo">${esc(p.tipo)}</span>` : ''}${p.fixo ? '<span class="selo ouro">fixo</span>' : ''}</div>
-      ${p.fixo ? `<div class="sub">todo mês desde ${C.nomeMes(p.mes_inicio, true)}</div>` : ''}</div>
+      ${p.fixo ? `<div class="sub">${p.mes_fim ? `${C.nomeMes(p.mes_inicio, true)} a ${C.nomeMes(p.mes_fim, true)}` : `todo mês desde ${C.nomeMes(p.mes_inicio, true)}`}</div>` : ''}</div>
     <span class="valor">${C.brl(p.valor)}</span>
     <span class="ops">${p.fixo
-      ? `<button type="button" data-acao="parar-pessf" data-id="${p.id}" class="op-txt" title="Último mês é este">Parar</button>
+      ? `${!p.mes_fim || p.mes_fim > S.mes ? `<button type="button" data-acao="parar-pessf" data-id="${p.id}" class="op-txt" title="Último mês é este">Parar</button>` : ''}
+         <button type="button" data-acao="editar-pessf" data-id="${p.id}" title="Editar" aria-label="Editar">✎</button>
          <button type="button" data-acao="excluir-pessf" data-id="${p.id}" title="Excluir de todos os meses" aria-label="Excluir">✕</button>`
-      : `<button type="button" data-acao="excluir-pess" data-id="${p.id}" title="Excluir" aria-label="Excluir">✕</button>`}</span>
+      : `<button type="button" data-acao="editar-pess" data-id="${p.id}" title="Editar" aria-label="Editar">✎</button>
+         <button type="button" data-acao="excluir-pess" data-id="${p.id}" title="Excluir" aria-label="Excluir">✕</button>`}</span>
   </li>`;
   const auto_ = (titulo, sub, v) => `<li><span class="barra auto"></span>
     <div><div class="titulo">${titulo}<span class="selo">automático</span></div><div class="sub">${sub}</div></div>
@@ -789,17 +795,24 @@ function vEu() {
 
   <div class="duas duas-form">
     <form class="bloco form" data-form="pess">
-      <h2>Lançar na minha área</h2>
+      <h2>${edE ? (edF ? 'Editar lançamento fixo' : 'Editar lançamento') : 'Lançar na minha área'}</h2>
       ${seg('nat', [['GASTO', 'Gasto pessoal'], ['GANHO', 'Ganho']])}
-      ${seg('freq', [['UNICO', 'Só este mês'], ['FIXO', 'Todo mês (fixo)']])}
-      <p class="nota" data-quando="freq=FIXO">Repete sozinho a partir de ${C.nomeMes(S.mes)}, até você parar.</p>
-      <label>Tipo <input type="text" name="tipo" id="pess-tipo" list="dl-pess" required autocomplete="off"></label>
+      ${edE ? '' : seg('freq', [['UNICO', 'Só este mês'], ['FIXO', 'Todo mês (fixo)']])}
+      ${edE ? '' : `<p class="nota" data-quando="freq=FIXO">Repete sozinho a partir de ${C.nomeMes(S.mes)}, até você parar.</p>`}
+      ${edF && edF.mes_inicio < S.mes ? `
+      <div><span class="rotulo">A alteração vale</span>${seg('escopoFixo', [['DAQUI', `De ${C.nomeMes(S.mes, true)} em diante`], ['TODOS', 'Todos os meses']])}</div>
+      <p class="nota" data-quando="escopoFixo=DAQUI">Os meses anteriores continuam com o valor antigo (${C.brl(edF.valor)}).</p>
+      <p class="nota" data-quando="escopoFixo=TODOS">Muda também os meses anteriores, desde ${C.nomeMes(edF.mes_inicio, true)}.</p>` : ''}
+      <label>Tipo <input type="text" name="tipo" id="pess-tipo" list="dl-pess" required autocomplete="off" value="${esc(edE?.tipo || '')}"></label>
       ${chips('pess-tipo', C.TIPOS_GASTO_PESSOAL, 'nat=GASTO')}
       ${chips('pess-tipo', C.TIPOS_GANHO, 'nat=GANHO')}
       ${datalist('dl-pess', [...C.TIPOS_GASTO_PESSOAL, ...C.TIPOS_GANHO], [...S.d.pessoais.map((p) => p.tipo), ...S.d.pessoaisFixos.map((p) => p.tipo)])}
-      <label><span>Descrição <span class="campo-dica">opcional</span></span><input type="text" name="descricao" autocomplete="off"></label>
-      ${campoValor('valor')}
-      <div class="acoes"><button type="submit" class="btn btn-cheio">Salvar</button></div>
+      <label><span>Descrição <span class="campo-dica">opcional</span></span><input type="text" name="descricao" autocomplete="off" value="${esc(edE?.descricao || '')}"></label>
+      ${campoValor('valor', edE ? valorParaCampo(edE) : '')}
+      <div class="acoes">
+        <button type="submit" class="btn btn-cheio">${edE ? 'Salvar alteração' : 'Salvar'}</button>
+        ${edE ? '<button type="button" class="btn" data-acao="cancelar-pess">Cancelar</button>' : ''}
+      </div>
     </form>
 
     <section class="bloco">
@@ -836,11 +849,14 @@ function vEu() {
   </form>`;
 }
 function blocoCaixinhas(sobra, caixas) {
+  const edC = S.edit.caixa ? caixas.itens.find((c) => c.id === S.edit.caixa) : null;
+  const teto = C.r2(caixas.livre + (edC ? edC.percentual : 0));
   const linha = (c) => `<li>
     <span class="barra p-${S.perfil.pessoa}"></span>
     <div><div class="titulo">${esc(c.nome)}<span class="selo">${C.num(c.percentual, 1)}% da sobra</span></div></div>
     <span class="valor">${C.brl(c.valor)}</span>
-    <span class="ops"><button type="button" data-acao="excluir-caixa" data-id="${c.id}" title="Excluir caixinha" aria-label="Excluir">✕</button></span>
+    <span class="ops"><button type="button" data-acao="editar-caixa" data-id="${c.id}" title="Editar caixinha" aria-label="Editar">✎</button>
+      <button type="button" data-acao="excluir-caixa" data-id="${c.id}" title="Excluir caixinha" aria-label="Excluir">✕</button></span>
   </li>`;
   const aviso = caixas.livre > 0
     ? `Faltam ${C.num(caixas.livre, 1)}% para distribuir.`
@@ -858,13 +874,17 @@ function blocoCaixinhas(sobra, caixas) {
     ${caixas.itens.length ? `<ul class="lista">${caixas.itens.map(linha).join('')}</ul>` : '<p class="vazio">Nenhuma caixinha criada.</p>'}
     <p class="nota" style="margin-top:10px"><strong>${aviso}</strong> As caixinhas valem para todos os meses.</p>
 
-    ${caixas.livre > 0 ? `
+    ${teto > 0 ? `
     <form class="form" data-form="caixa" style="margin-top:16px; max-width:420px">
-      <label>Nome da caixinha <input type="text" name="nome" required autocomplete="off" placeholder="Viagem, reserva, carro…"></label>
-      <label><span>Porcentagem da sobra <span class="campo-dica">até ${C.num(caixas.livre, 1)}%</span></span>
-        <input type="number" name="pct" min="1" max="${caixas.livre}" step="1" required placeholder="10"></label>
-      <div class="chips">${[5, 10, 20, 25, 50].filter((n) => n <= caixas.livre).map((n) => `<button type="button" data-acao="chip-pct" data-v="${n}">${n}%</button>`).join('')}</div>
-      <div class="acoes"><button type="submit" class="btn btn-cheio">Criar caixinha</button></div>
+      ${edC ? '<h3>Editar caixinha</h3>' : ''}
+      <label>Nome da caixinha <input type="text" name="nome" required autocomplete="off" placeholder="Viagem, reserva, carro…" value="${esc(edC?.nome || '')}"></label>
+      <label><span>Porcentagem da sobra <span class="campo-dica">até ${C.num(teto, 1)}%</span></span>
+        <input type="number" name="pct" min="1" max="${teto}" step="1" required placeholder="10" value="${edC ? edC.percentual : ''}"></label>
+      <div class="chips">${[5, 10, 20, 25, 50].filter((n) => n <= teto).map((n) => `<button type="button" data-acao="chip-pct" data-v="${n}">${n}%</button>`).join('')}</div>
+      <div class="acoes">
+        <button type="submit" class="btn btn-cheio">${edC ? 'Salvar alteração' : 'Criar caixinha'}</button>
+        ${edC ? '<button type="button" class="btn" data-acao="cancelar-caixa">Cancelar</button>' : ''}
+      </div>
     </form>` : ''}
   </section>`;
 }
@@ -875,14 +895,19 @@ async function salvarCaixa(form) {
   if (!nome) return toast('Dê um nome para a caixinha', true);
   if (!Number.isFinite(pct) || pct <= 0) return toast('Informe a porcentagem', true);
   const { caixas } = dadosEu();
-  if (pct > caixas.livre + 0.001) {
-    return toast(caixas.livre > 0
-      ? `Só restam ${C.num(caixas.livre, 1)}% para distribuir`
+  const edC = S.edit.caixa ? caixas.itens.find((c) => c.id === S.edit.caixa) : null;
+  const teto = C.r2(caixas.livre + (edC ? edC.percentual : 0));
+  if (pct > teto + 0.001) {
+    return toast(teto > 0
+      ? `Só restam ${C.num(teto, 1)}% para distribuir`
       : 'Os 100% já estão distribuídos', true);
   }
-  const { error } = await sb.from('caixinhas').insert({ nome, percentual: pct });
+  const { error } = edC
+    ? await sb.from('caixinhas').update({ nome, percentual: pct }).eq('id', edC.id)
+    : await sb.from('caixinhas').insert({ nome, percentual: pct });
   if (error) return falha(error, 'Não salvou');
-  toast('Caixinha criada');
+  toast(edC ? 'Alteração salva' : 'Caixinha criada');
+  S.edit.caixa = null;
   await recarregar('caixinhas');
   render();
 }
@@ -906,6 +931,7 @@ async function salvarPess(form) {
   if (v.valor <= 0) return toast('O valor precisa ser maior que zero', true);
   const base = { natureza: S.f.nat, tipo: normTipo(fd.get('tipo')), descricao: fd.get('descricao').trim() || null, valor: v.valor };
   if (!base.tipo) return toast('Escolha o tipo', true);
+  if (S.edit.pess || S.edit.pessf) return salvarEdicaoPess(base);
   const fixo = S.f.freq === 'FIXO';
   const { error } = fixo
     ? await sb.from('pessoais_fixos').insert({ ...base, mes_inicio: S.mes, mes_fim: null })
@@ -915,6 +941,30 @@ async function salvarPess(form) {
   await recarregar(fixo ? 'pessoais_fixos' : 'pessoais');
   render();
   $('#pess-tipo')?.focus();
+}
+async function salvarEdicaoPess(base) {
+  if (S.edit.pess) {
+    const { error } = await sb.from('pessoais').update(base).eq('id', S.edit.pess);
+    if (error) return falha(error, 'Não salvou');
+    await recarregar('pessoais');
+  } else {
+    const ant = S.d.pessoaisFixos.find((p) => p.id === S.edit.pessf);
+    if (!ant) { S.edit.pessf = null; return render(); }
+    if (S.f.escopoFixo === 'DAQUI' && ant.mes_inicio < S.mes) {
+      // o antigo termina no mês anterior; um novo começa neste mês com os dados alterados
+      const { error: e1 } = await sb.from('pessoais_fixos').insert({ ...base, mes_inicio: S.mes, mes_fim: ant.mes_fim });
+      if (e1) return falha(e1, 'Não salvou');
+      const { error: e2 } = await sb.from('pessoais_fixos').update({ mes_fim: C.somaMes(S.mes, -1) }).eq('id', ant.id);
+      if (e2) { await recarregar('pessoais_fixos'); render(); return falha(e2, 'Criou o novo, mas não encerrou o antigo. Use Parar no antigo'); }
+    } else {
+      const { error } = await sb.from('pessoais_fixos').update(base).eq('id', ant.id);
+      if (error) return falha(error, 'Não salvou');
+    }
+    await recarregar('pessoais_fixos');
+  }
+  toast('Alteração salva');
+  S.edit.pess = null; S.edit.pessf = null;
+  render();
 }
 async function repetirGanhos() {
   const ant = C.somaMes(S.mes, -1);
@@ -1191,8 +1241,8 @@ document.addEventListener('click', async (e) => {
   const n = Number(id);
 
   switch (acao) {
-    case 'mes-ant': S.mes = C.somaMes(S.mes, -1); S.edit = { lanc: null, parc: null }; return render();
-    case 'mes-prox': S.mes = C.somaMes(S.mes, 1); S.edit = { lanc: null, parc: null }; return render();
+    case 'mes-ant': S.mes = C.somaMes(S.mes, -1); S.edit = semEdicao(); return render();
+    case 'mes-prox': S.mes = C.somaMes(S.mes, 1); S.edit = semEdicao(); return render();
     case 'mes-hoje': S.mes = C.mesAtual(); return render();
     case 'aba': return irPara(v);
 
@@ -1204,7 +1254,7 @@ document.addEventListener('click', async (e) => {
       if (k === 'grafMor') desenharConsumo();
       if (k === 'periodo' || k === 'escopoPac') render();
       if (k === 'pacPlano') previaPac($('[data-form=pac]'));
-      if (k === 'nat') { const t = $('#pess-tipo'); if (t) t.value = ''; }
+      if (k === 'nat' && !S.edit.pess && !S.edit.pessf) { const t = $('#pess-tipo'); if (t) t.value = ''; }
       return;
     }
     case 'chip': {
@@ -1216,12 +1266,12 @@ document.addEventListener('click', async (e) => {
 
     case 'editar-lanc': {
       const l = S.d.lancamentos.find((x) => x.id === n);
-      S.edit = { lanc: n, parc: null }; S.f.cat = l.categoria; S.f.pagador = l.pagador;
+      S.edit = { ...semEdicao(), lanc: n }; S.f.cat = l.categoria; S.f.pagador = l.pagador;
       render(); $('[data-form=lanc]').scrollIntoView({ behavior: 'smooth' });
       return;
     }
     case 'cancelar-edicao':
-      S.edit = { lanc: null, parc: null }; S.f.cat = 'COMPARTILHADO'; S.f.fim = 'REC'; S.f.pagador = S.perfil.pessoa;
+      S.edit = semEdicao(); S.f.cat = 'COMPARTILHADO'; S.f.fim = 'REC'; S.f.pagador = S.perfil.pessoa;
       return render();
     case 'excluir-lanc': {
       const l = S.d.lancamentos.find((x) => x.id === n);
@@ -1234,7 +1284,7 @@ document.addEventListener('click', async (e) => {
 
     case 'editar-parc': {
       const p = S.d.parceladas.find((x) => x.id === n);
-      S.edit = { lanc: null, parc: n }; S.f.cat = 'PARCELA'; S.f.pagador = p.pagador; S.f.div = p.divisao; S.f.fim = p.mes_fim ? 'MES' : 'REC';
+      S.edit = { ...semEdicao(), parc: n }; S.f.cat = 'PARCELA'; S.f.pagador = p.pagador; S.f.div = p.divisao; S.f.fim = p.mes_fim ? 'MES' : 'REC';
       render(); $('[data-form=lanc]').scrollIntoView({ behavior: 'smooth' });
       return;
     }
@@ -1277,6 +1327,23 @@ document.addEventListener('click', async (e) => {
       $$('button', b.parentElement).forEach((x) => x.setAttribute('aria-pressed', x === b));
       return;
     }
+    case 'editar-pess':
+    case 'editar-pessf': {
+      const fixo = acao === 'editar-pessf';
+      const p = (fixo ? S.d.pessoaisFixos : S.d.pessoais).find((x) => x.id === n);
+      if (!p) return;
+      S.edit = { ...semEdicao(), [fixo ? 'pessf' : 'pess']: n };
+      S.f.nat = p.natureza; S.f.escopoFixo = 'DAQUI';
+      render(); $('[data-form=pess]').scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    case 'cancelar-pess': S.edit.pess = null; S.edit.pessf = null; return render();
+    case 'editar-caixa': {
+      S.edit = { ...semEdicao(), caixa: n };
+      render(); $('[data-form=caixa]')?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    case 'cancelar-caixa': S.edit.caixa = null; return render();
     case 'parar-pessf': {
       const p = S.d.pessoaisFixos.find((x) => x.id === n);
       if (!confirm(`${p.descricao || p.tipo}: o último mês passa a ser ${C.nomeMes(S.mes)}. Confirma?`)) return;
@@ -1289,6 +1356,7 @@ document.addEventListener('click', async (e) => {
       if (!confirm(`Excluir ${p.descricao || p.tipo}? Some de TODOS os meses. Para só parar daqui para a frente, use Parar.`)) return;
       const { error } = await sb.from('pessoais_fixos').delete().eq('id', n);
       if (error) return falha(error, 'Não excluiu');
+      if (S.edit.pessf === n) S.edit.pessf = null;
       toast('Excluído'); await recarregar('pessoais_fixos'); return render();
     }
     case 'excluir-caixa': {
@@ -1296,12 +1364,14 @@ document.addEventListener('click', async (e) => {
       if (!confirm(`Excluir a caixinha ${c.nome}?`)) return;
       const { error } = await sb.from('caixinhas').delete().eq('id', n);
       if (error) return falha(error, 'Não excluiu');
+      if (S.edit.caixa === n) S.edit.caixa = null;
       toast('Caixinha excluída'); await recarregar('caixinhas'); return render();
     }
     case 'excluir-pess': {
       if (!confirm('Excluir este lançamento?')) return;
       const { error } = await sb.from('pessoais').delete().eq('id', n);
       if (error) return falha(error, 'Não excluiu');
+      if (S.edit.pess === n) S.edit.pess = null;
       toast('Excluído'); await recarregar('pessoais'); return render();
     }
     default:
