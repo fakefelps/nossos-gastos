@@ -246,6 +246,78 @@ export function custoPessoalDoCasal(itens, linhasMoradia, pessoa) {
   return { casal, moradia };
 }
 
+// ---------- pacientes (nutrição) ----------
+export const PLANOS = [
+  { id: 'AVULSO',      nome: 'Avulso',      consultas: 1 },
+  { id: 'CONSULTORIA', nome: 'Consultoria', consultas: 1 },
+  { id: 'TRIMESTRAL',  nome: 'Trimestral',  consultas: 3 },
+  { id: 'SEMESTRAL',   nome: 'Semestral',   consultas: 6 },
+];
+export const TIPOS_ATENDIMENTO = ['ONLINE', 'PRESENCIAL'];
+export const CIDADES = ['GOIÂNIA', 'RIO VERDE'];
+export const planoDe = (id) => PLANOS.find((x) => x.id === id) || { id, nome: cap(String(id || '').toLowerCase()), consultas: 1 };
+export const consultasDoPlano = (id) => planoDe(id).consultas;
+export const mesFimPaciente = (p) => somaMes(p.mes_inicio, consultasDoPlano(p.plano) - 1);
+export const pacienteAtivo = (p, mes) => p.mes_inicio <= mes && mes <= mesFimPaciente(p);
+// o valor do plano é dividido pelo número de consultas
+export const valorMensalPaciente = (p) => r2(Number(p.valor) / consultasDoPlano(p.plano));
+
+export function pacientesDoMes(pacientes, mes) {
+  return pacientes
+    .filter((p) => pacienteAtivo(p, mes))
+    .map((p) => ({
+      ...p,
+      mensal: valorMensalPaciente(p),
+      consulta: difMeses(p.mes_inicio, mes) + 1,
+      consultas: consultasDoPlano(p.plano),
+    }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+export const receitaPacientes = (pacientes, mes) =>
+  r2(pacientesDoMes(pacientes, mes).reduce((a, p) => a + p.mensal, 0));
+
+// quantidade de pacientes por plano / tipo / cidade
+export function contarPor(pacientes, campo) {
+  const mapa = new Map();
+  for (const p of pacientes) {
+    const k = String(p[campo] || '—');
+    mapa.set(k, (mapa.get(k) || 0) + 1);
+  }
+  const total = pacientes.length;
+  return [...mapa.entries()]
+    .map(([chave, qtd]) => ({ tipo: campo === 'plano' ? planoDe(chave).nome.toUpperCase() : chave, valor: qtd, pct: total ? qtd / total : 0 }))
+    .sort((a, b) => b.valor - a.valor);
+}
+
+// receita dos pacientes mês a mês, com a variação em relação ao mês anterior
+export function serieReceitaPacientes(pacientes, fim, qtd) {
+  const meses = listaMeses(fim, qtd);
+  return meses.map((mes, i, arr) => {
+    const valor = receitaPacientes(pacientes, mes);
+    const ant = i > 0 ? receitaPacientes(pacientes, arr[i - 1]) : null;
+    const variacao = ant ? (valor / ant - 1) * 100 : null;
+    return { mes, valor, variacao, qtd: pacientesDoMes(pacientes, mes).length };
+  });
+}
+
+// ---------- pessoais: lançamentos do mês + fixos/recorrentes ativos ----------
+export function pessoaisDoMes(pessoais, fixos, mes, dono) {
+  const unicos = pessoais.filter((p) => p.mes === mes && p.dono === dono).map((p) => ({ ...p, fixo: false }));
+  const fix = fixos.filter((p) => p.dono === dono && parcelaAtiva(p, mes)).map((p) => ({ ...p, fixo: true }));
+  return [...unicos, ...fix];
+}
+
+// ---------- caixinhas: divisão da sobra do mês ----------
+export function distribuirCaixinhas(caixinhas, sobra) {
+  const usado = r2(caixinhas.reduce((a, c) => a + Number(c.percentual), 0));
+  const livre = r2(100 - usado);
+  const base = sobra > 0 ? r2(sobra) : 0;
+  const itens = caixinhas
+    .map((c) => ({ ...c, percentual: Number(c.percentual), valor: r2(base * Number(c.percentual) / 100) }))
+    .sort((a, b) => b.percentual - a.percentual);
+  return { itens, usado, livre, base, guardado: r2(base * usado / 100), sobrando: r2(base * livre / 100) };
+}
+
 // ---------- histórico: total do mês = 50/50 + para o outro + parcelas ----------
 export function totalGastosMes(lancamentos, parceladas, legado, mes) {
   // mês da planilha sem lançamentos no site: vale o total da planilha (já inclui as parcelas)
