@@ -19,8 +19,8 @@ export const TIPOS_GASTO_PESSOAL = [
 export const TIPOS_GANHO = ['SALÁRIO', 'FREELA', 'EXTRA', 'RENDIMENTO', 'REEMBOLSO', 'OUTROS'];
 
 export const CONTAS_MORADIA = [
-  { id: 'ALUGUEL',    nome: 'Aluguel',    unidade: null,  fixa: true,  padrao: 710.00 },
-  { id: 'CONDOMINIO', nome: 'Condomínio', unidade: null,  fixa: true,  padrao: 240.00 },
+  { id: 'ALUGUEL',    nome: 'Aluguel',    unidade: null,  fixa: true,  padrao: 1440.00 },
+  { id: 'CONDOMINIO', nome: 'Condomínio', unidade: null,  fixa: true,  padrao: 480.00 },
   { id: 'INTERNET',   nome: 'Internet',   unidade: null,  fixa: true,  padrao: 99.99 },
   { id: 'AGUA',       nome: 'Água',       unidade: 'm³',  fixa: false, padrao: 160.01 },
   { id: 'ENERGIA',    nome: 'Energia',    unidade: 'kWh', fixa: false, padrao: 200.00 },
