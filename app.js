@@ -3,19 +3,19 @@
 // =====================================================================
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import * as C from './calc.js?v=4';
+import * as C from './calc.js?v=6';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const ABAS = ['acerto', 'lancar', 'moradia', 'historico', 'eu'];
+const ABAS = ['acerto', 'lancar', 'moradia', 'historico', 'eu', 'pacientes'];
 const S = {
   user: null,
   perfil: null,
   mes: C.mesAtual(),
   aba: 'acerto',
-  d: { lancamentos: [], parceladas: [], moradia: [], legado: [], pessoais: [] },
-  edit: { lanc: null, parc: null },
-  f: { cat: 'COMPARTILHADO', pagador: 'FELIPE', div: '50/50', fim: 'REC', nat: 'GASTO', grafMor: 'ENERGIA', periodo: '12', morMes: null },
+  d: { lancamentos: [], parceladas: [], moradia: [], legado: [], pessoais: [], pessoaisFixos: [], caixinhas: [], pacientes: [] },
+  edit: { lanc: null, parc: null, pac: null, pess: null, pessf: null, caixa: null },
+  f: { cat: 'COMPARTILHADO', pagador: 'FELIPE', div: '50/50', fim: 'REC', nat: 'GASTO', freq: 'UNICO', pacPlano: 'AVULSO', escopoPac: 'MES', grafMor: 'ENERGIA', periodo: '12', morMes: null, escopoFixo: 'DAQUI' },
   charts: [],
   ultimaCarga: 0,
 };
@@ -80,15 +80,16 @@ async function buscarTudo(tabela, ordem = 'id') {
   return out;
 }
 async function carregarTudo() {
-  const [lancamentos, parceladas, moradia, legado, pessoais] = await Promise.all([
+  const [lancamentos, parceladas, moradia, legado, pessoais, pessoaisFixos, caixinhas, pacientes] = await Promise.all([
     buscarTudo('lancamentos'), buscarTudo('parceladas'), buscarTudo('moradia'),
     buscarTudo('historico_legado', 'mes'), buscarTudo('pessoais'),
+    buscarTudo('pessoais_fixos'), buscarTudo('caixinhas'), buscarTudo('pacientes'),
   ]);
-  S.d = { lancamentos, parceladas, moradia, legado, pessoais };
+  S.d = { lancamentos, parceladas, moradia, legado, pessoais, pessoaisFixos, caixinhas, pacientes };
   S.ultimaCarga = Date.now();
 }
 async function recarregar(tabela) {
-  const mapa = { lancamentos: 'lancamentos', parceladas: 'parceladas', moradia: 'moradia', pessoais: 'pessoais' };
+  const mapa = { lancamentos: 'lancamentos', parceladas: 'parceladas', moradia: 'moradia', pessoais: 'pessoais', pessoais_fixos: 'pessoaisFixos', caixinhas: 'caixinhas', pacientes: 'pacientes' };
   S.d[mapa[tabela]] = await buscarTudo(tabela);
   S.ultimaCarga = Date.now();
 }
@@ -145,6 +146,8 @@ async function entrarNoApp(user) {
   try { await carregarTudo(); } catch (e) { falha(e, 'Erro ao carregar'); }
   $('#tela-login').hidden = true;
   $('#tela-app').hidden = false;
+  $('[data-aba=pacientes]').hidden = perfil.pessoa !== 'MARIANA';
+  if (S.aba === 'pacientes' && perfil.pessoa !== 'MARIANA') S.aba = 'eu';
   const chip = $('#usuario-nome');
   chip.textContent = perfil.nome;
   chip.className = `chip-pessoa p-${perfil.pessoa}`;
@@ -170,12 +173,14 @@ function render() {
   $('#mes-nome').textContent = C.cap(C.nomeMes(S.mes));
   $$('.abas button').forEach((b) => b.setAttribute('aria-current', b.dataset.aba === S.aba ? 'page' : 'false'));
   const v = $('#view');
-  const fn = { acerto: vAcerto, lancar: vLancar, moradia: vMoradia, historico: vHistorico, eu: vEu }[S.aba];
+  if (S.aba === 'pacientes' && S.perfil.pessoa !== 'MARIANA') S.aba = 'eu';
+  const fn = { acerto: vAcerto, lancar: vLancar, moradia: vMoradia, historico: vHistorico, eu: vEu, pacientes: vPacientes }[S.aba];
   v.innerHTML = fn();
   atualizarDependentes(v);
-  const pos = { acerto: gAcerto, moradia: gMoradia, historico: gHistorico, eu: gEu }[S.aba];
+  const pos = { acerto: gAcerto, moradia: gMoradia, historico: gHistorico, eu: gEu, pacientes: gPacientes }[S.aba];
   if (pos && window.Chart) { configurarChart(); pos(); }
   if (S.aba === 'lancar') previaParc($('[data-form=lanc]'));
+  if (S.aba === 'pacientes') previaPac($('[data-form=pac]'));
 }
 
 function irPara(aba) {
@@ -207,6 +212,7 @@ const campoValor = (nome, valorInicial = '', dica = 'pode digitar a conta: 671,6
     <input type="text" name="${nome}" data-previa required autocomplete="off" placeholder="0,00" value="${esc(valorInicial)}">
   </label>
   <p class="previa"></p>`;
+const semEdicao = () => ({ lanc: null, parc: null, pac: null, pess: null, pessf: null, caixa: null });
 const valorParaCampo = (reg) => (reg.expressao ? reg.expressao : String(reg.valor).replace('.', ','));
 
 function atualizarDependentes(raiz = document) {
@@ -337,7 +343,6 @@ function vLancar() {
   const ps = S.d.parceladas;
   const ativas = ps.filter((p) => C.parcelaAtiva(p, S.mes));
   const futuras = ps.filter((p) => p.mes_inicio > S.mes);
-  const fim = ps.filter((p) => p.mes_fim && p.mes_fim < S.mes);
   const inicio = edP ? edP.mes_inicio : S.mes;
 
   const opcoes = edP ? [['PARCELA', 'Parcelado / fixo']]
@@ -402,7 +407,6 @@ function vLancar() {
         ${ativas.length ? `<ul class="lista">${ativas.map((p) => itemParc(p, true)).join('')}</ul>` : '<p class="vazio">Nenhuma parcela neste mês.</p>'}
       </div>
       ${futuras.length ? `<div class="grupo"><h3>Começam depois</h3><ul class="lista">${futuras.map((p) => itemParc(p)).join('')}</ul></div>` : ''}
-      ${fim.length ? `<div class="grupo"><h3>Já terminaram</h3><ul class="lista">${fim.map((p) => itemParc(p)).join('')}</ul></div>` : ''}
     </section>
   </div>`;
 }
@@ -727,22 +731,35 @@ function dadosEu() {
   // acerto do casal: entra como ganho (recebe) ou gasto (paga)
   const recebe = geral.valor && geral.para === pessoa ? geral.valor : 0;
   const paga = geral.valor && geral.de === pessoa ? geral.valor : 0;
-  const meus = S.d.pessoais.filter((p) => p.mes === S.mes && p.dono === S.user.id);
-  const ganhos = meus.filter((p) => p.natureza === 'GANHO');
-  const gastos = meus.filter((p) => p.natureza === 'GASTO');
+  const pacientes = pessoa === 'MARIANA' ? C.pacientesDoMes(S.d.pacientes, S.mes) : [];
+  const totPac = C.r2(pacientes.reduce((a, p) => a + p.mensal, 0));
+  const meus = C.pessoaisDoMes(S.d.pessoais, S.d.pessoaisFixos, S.mes, S.user.id);
+  const ordem = (a, b) => (a.fixo === b.fixo ? Number(b.valor) - Number(a.valor) : a.fixo ? -1 : 1);
+  const ganhos = meus.filter((p) => p.natureza === 'GANHO').sort(ordem);
+  const gastos = meus.filter((p) => p.natureza === 'GASTO').sort(ordem);
   const soma = (l) => C.r2(l.reduce((a, x) => a + Number(x.valor), 0));
-  const totG = soma(ganhos); const totP = soma(gastos);
+  const totG = C.r2(soma(ganhos) + totPac); const totP = soma(gastos);
   const sobra = C.r2(totG + recebe - totP - paga - moradia);
-  return { pessoa, geral, recebe, paga, moradia, morPartes, ganhos, gastos, totG, totP, sobra };
+  const caixas = C.distribuirCaixinhas(S.d.caixinhas.filter((c) => c.dono === S.user.id), sobra);
+  return { pessoa, geral, recebe, paga, moradia, morPartes, ganhos, gastos, pacientes, totPac, totG, totP, sobra, caixas };
 }
 function vEu() {
-  const { pessoa, geral, recebe, paga, moradia, morPartes, ganhos, gastos, totG, totP, sobra } = dadosEu();
+  const { pessoa, recebe, paga, morPartes, ganhos, gastos, pacientes, totPac, totG, totP, sobra, caixas } = dadosEu();
   const outroNome = C.NOME[C.outro(pessoa)];
+  const edU = S.edit.pess ? S.d.pessoais.find((p) => p.id === S.edit.pess) : null;
+  const edF = S.edit.pessf ? S.d.pessoaisFixos.find((p) => p.id === S.edit.pessf) : null;
+  const edE = edU || edF;
   const item = (p) => `<li>
     <span class="barra p-${pessoa}"></span>
-    <div><div class="titulo">${esc(p.descricao || p.tipo)}${p.descricao ? `<span class="selo">${esc(p.tipo)}</span>` : ''}</div></div>
+    <div><div class="titulo">${esc(p.descricao || p.tipo)}${p.descricao ? `<span class="selo">${esc(p.tipo)}</span>` : ''}${p.fixo ? '<span class="selo ouro">fixo</span>' : ''}</div>
+      ${p.fixo ? `<div class="sub">${p.mes_fim ? `${C.nomeMes(p.mes_inicio, true)} a ${C.nomeMes(p.mes_fim, true)}` : `todo mês desde ${C.nomeMes(p.mes_inicio, true)}`}</div>` : ''}</div>
     <span class="valor">${C.brl(p.valor)}</span>
-    <span class="ops"><button type="button" data-acao="excluir-pess" data-id="${p.id}" title="Excluir" aria-label="Excluir">✕</button></span>
+    <span class="ops">${p.fixo
+      ? `${!p.mes_fim || p.mes_fim > S.mes ? `<button type="button" data-acao="parar-pessf" data-id="${p.id}" class="op-txt" title="Último mês é este">Parar</button>` : ''}
+         <button type="button" data-acao="editar-pessf" data-id="${p.id}" title="Editar" aria-label="Editar">✎</button>
+         <button type="button" data-acao="excluir-pessf" data-id="${p.id}" title="Excluir de todos os meses" aria-label="Excluir">✕</button>`
+      : `<button type="button" data-acao="editar-pess" data-id="${p.id}" title="Editar" aria-label="Editar">✎</button>
+         <button type="button" data-acao="excluir-pess" data-id="${p.id}" title="Excluir" aria-label="Excluir">✕</button>`}</span>
   </li>`;
   const auto_ = (titulo, sub, v) => `<li><span class="barra auto"></span>
     <div><div class="titulo">${titulo}<span class="selo">automático</span></div><div class="sub">${sub}</div></div>
@@ -753,14 +770,20 @@ function vEu() {
     : paga
       ? `<div class="numero"><dt>Acerto: você paga</dt><dd class="sobe">−&nbsp;${C.brl(paga)}</dd></div>`
       : `<div class="numero"><dt>Acerto do mês</dt><dd>${C.brl(0)}</dd></div>`;
+  const itemPac = (p) => `<li><span class="barra auto"></span>
+    <div><div class="titulo">${esc(p.nome)}<span class="selo ouro">paciente</span></div>
+      <div class="sub">${C.planoDe(p.plano).nome}${p.consultas > 1 ? ` · consulta ${p.consulta} de ${p.consultas}` : ''} · ${esc(p.tipo || '')}</div></div>
+    <span class="valor">${C.brl(p.mensal)}</span><span class="ops"></span></li>`;
   const listaGanhos = [
     recebe ? auto_('Acerto do casal', `recebido de ${outroNome}`, recebe) : '',
+    ...pacientes.map(itemPac),
     ...ganhos.map(item),
   ].join('');
 
   return `
   <section class="numeros">
     <div class="numero"><dt>Ganhos</dt><dd>${C.brl(totG)}</dd></div>
+    ${pessoa === 'MARIANA' ? `<div class="numero"><dt>Ganhos com pacientes</dt><dd>${C.brl(totPac)}</dd></div>` : ''}
     <div class="numero"><dt>Gastos pessoais</dt><dd>${C.brl(totP)}</dd></div>
     ${cardAcerto}
     <div class="numero"><dt>Aluguel (sua metade)</dt><dd>${C.brl(morPartes.aluguel)}</dd></div>
@@ -772,21 +795,31 @@ function vEu() {
 
   <div class="duas duas-form">
     <form class="bloco form" data-form="pess">
-      <h2>Lançar na minha área</h2>
+      <h2>${edE ? (edF ? 'Editar lançamento fixo' : 'Editar lançamento') : 'Lançar na minha área'}</h2>
       ${seg('nat', [['GASTO', 'Gasto pessoal'], ['GANHO', 'Ganho']])}
-      <label>Tipo <input type="text" name="tipo" id="pess-tipo" list="dl-pess" required autocomplete="off"></label>
+      ${edE ? '' : seg('freq', [['UNICO', 'Só este mês'], ['FIXO', 'Todo mês (fixo)']])}
+      ${edE ? '' : `<p class="nota" data-quando="freq=FIXO">Repete sozinho a partir de ${C.nomeMes(S.mes)}, até você parar.</p>`}
+      ${edF && edF.mes_inicio < S.mes ? `
+      <div><span class="rotulo">A alteração vale</span>${seg('escopoFixo', [['DAQUI', `De ${C.nomeMes(S.mes, true)} em diante`], ['TODOS', 'Todos os meses']])}</div>
+      <p class="nota" data-quando="escopoFixo=DAQUI">Os meses anteriores continuam com o valor antigo (${C.brl(edF.valor)}).</p>
+      <p class="nota" data-quando="escopoFixo=TODOS">Muda também os meses anteriores, desde ${C.nomeMes(edF.mes_inicio, true)}.</p>` : ''}
+      <label>Tipo <input type="text" name="tipo" id="pess-tipo" list="dl-pess" required autocomplete="off" value="${esc(edE?.tipo || '')}"></label>
       ${chips('pess-tipo', C.TIPOS_GASTO_PESSOAL, 'nat=GASTO')}
       ${chips('pess-tipo', C.TIPOS_GANHO, 'nat=GANHO')}
-      ${datalist('dl-pess', [...C.TIPOS_GASTO_PESSOAL, ...C.TIPOS_GANHO], S.d.pessoais.map((p) => p.tipo))}
-      <label><span>Descrição <span class="campo-dica">opcional</span></span><input type="text" name="descricao" autocomplete="off"></label>
-      ${campoValor('valor')}
-      <div class="acoes"><button type="submit" class="btn btn-cheio">Salvar</button></div>
+      ${datalist('dl-pess', [...C.TIPOS_GASTO_PESSOAL, ...C.TIPOS_GANHO], [...S.d.pessoais.map((p) => p.tipo), ...S.d.pessoaisFixos.map((p) => p.tipo)])}
+      <label><span>Descrição <span class="campo-dica">opcional</span></span><input type="text" name="descricao" autocomplete="off" value="${esc(edE?.descricao || '')}"></label>
+      ${campoValor('valor', edE ? valorParaCampo(edE) : '')}
+      <div class="acoes">
+        <button type="submit" class="btn btn-cheio">${edE ? 'Salvar alteração' : 'Salvar'}</button>
+        ${edE ? '<button type="button" class="btn" data-acao="cancelar-pess">Cancelar</button>' : ''}
+      </div>
     </form>
 
     <section class="bloco">
       <div class="grupo">
         <div class="grupo-cab"><h3>Ganhos</h3>
-          <button type="button" class="btn-texto" data-acao="repetir-ganhos">Repetir ganhos do mês anterior</button></div>
+          <span>${pessoa === 'MARIANA' ? '<button type="button" class="btn-texto" data-acao="aba" data-v="pacientes">Pacientes</button>' : ''}
+          <button type="button" class="btn-texto" data-acao="repetir-ganhos">Repetir ganhos do mês anterior</button></span></div>
         ${listaGanhos ? `<ul class="lista">${listaGanhos}</ul>` : '<p class="vazio">Nenhum ganho lançado.</p>'}
       </div>
       <div class="grupo">
@@ -802,6 +835,8 @@ function vEu() {
     </section>
   </div>
 
+  ${blocoCaixinhas(sobra, caixas)}
+
   <section class="bloco">
     <div class="bloco-cab"><h2>Para onde foi o seu dinheiro</h2></div>
     <div class="pizza-lado"><div class="grafico"><canvas id="g-eu"></canvas></div><div id="leg-eu"></div></div>
@@ -812,6 +847,69 @@ function vEu() {
     <label>Nova senha <input type="password" name="senha" minlength="6" required autocomplete="new-password"></label>
     <div class="acoes"><button type="submit" class="btn">Trocar senha</button></div>
   </form>`;
+}
+function blocoCaixinhas(sobra, caixas) {
+  const edC = S.edit.caixa ? caixas.itens.find((c) => c.id === S.edit.caixa) : null;
+  const teto = C.r2(caixas.livre + (edC ? edC.percentual : 0));
+  const linha = (c) => `<li>
+    <span class="barra p-${S.perfil.pessoa}"></span>
+    <div><div class="titulo">${esc(c.nome)}<span class="selo">${C.num(c.percentual, 1)}% da sobra</span></div></div>
+    <span class="valor">${C.brl(c.valor)}</span>
+    <span class="ops"><button type="button" data-acao="editar-caixa" data-id="${c.id}" title="Editar caixinha" aria-label="Editar">✎</button>
+      <button type="button" data-acao="excluir-caixa" data-id="${c.id}" title="Excluir caixinha" aria-label="Excluir">✕</button></span>
+  </li>`;
+  const aviso = caixas.livre > 0
+    ? `Faltam ${C.num(caixas.livre, 1)}% para distribuir.`
+    : 'Os 100% da sobra estão distribuídos.';
+
+  return `
+  <section class="bloco">
+    <div class="bloco-cab"><h2>Caixinhas</h2><span class="nota">divisão da sobra do mês</span></div>
+    <section class="numeros" style="margin-bottom:16px">
+      <div class="numero"><dt>Sobra de ${C.nomeMes(S.mes, true)}</dt><dd>${C.brl(sobra)}</dd></div>
+      <div class="numero"><dt>Vai para as caixinhas</dt><dd>${C.brl(caixas.guardado)}</dd></div>
+      <div class="numero"><dt>Fica livre (${C.num(caixas.livre, 1)}%)</dt><dd>${C.brl(caixas.sobrando)}</dd></div>
+    </section>
+    ${sobra <= 0 ? '<p class="nota">Sua sobra deste mês não é positiva, então as caixinhas ficam zeradas. As porcentagens continuam valendo para os próximos meses.</p>' : ''}
+    ${caixas.itens.length ? `<ul class="lista">${caixas.itens.map(linha).join('')}</ul>` : '<p class="vazio">Nenhuma caixinha criada.</p>'}
+    <p class="nota" style="margin-top:10px"><strong>${aviso}</strong> As caixinhas valem para todos os meses.</p>
+
+    ${teto > 0 ? `
+    <form class="form" data-form="caixa" style="margin-top:16px; max-width:420px">
+      ${edC ? '<h3>Editar caixinha</h3>' : ''}
+      <label>Nome da caixinha <input type="text" name="nome" required autocomplete="off" placeholder="Viagem, reserva, carro…" value="${esc(edC?.nome || '')}"></label>
+      <label><span>Porcentagem da sobra <span class="campo-dica">até ${C.num(teto, 1)}%</span></span>
+        <input type="number" name="pct" min="0.01" max="${teto}" step="0.01" inputmode="decimal" required placeholder="10" value="${edC ? edC.percentual : ''}"></label>
+      <div class="chips">${[5, 10, 20, 25, 50].filter((n) => n <= teto).map((n) => `<button type="button" data-acao="chip-pct" data-v="${n}">${n}%</button>`).join('')}</div>
+      <div class="acoes">
+        <button type="submit" class="btn btn-cheio">${edC ? 'Salvar alteração' : 'Criar caixinha'}</button>
+        ${edC ? '<button type="button" class="btn" data-acao="cancelar-caixa">Cancelar</button>' : ''}
+      </div>
+    </form>` : ''}
+  </section>`;
+}
+async function salvarCaixa(form) {
+  const fd = new FormData(form);
+  const nome = String(fd.get('nome') || '').trim();
+  const pct = Number(String(fd.get('pct') || '').replace(',', '.'));
+  if (!nome) return toast('Dê um nome para a caixinha', true);
+  if (!Number.isFinite(pct) || pct <= 0) return toast('Informe a porcentagem', true);
+  const { caixas } = dadosEu();
+  const edC = S.edit.caixa ? caixas.itens.find((c) => c.id === S.edit.caixa) : null;
+  const teto = C.r2(caixas.livre + (edC ? edC.percentual : 0));
+  if (pct > teto + 0.001) {
+    return toast(teto > 0
+      ? `Só restam ${C.num(teto, 1)}% para distribuir`
+      : 'Os 100% já estão distribuídos', true);
+  }
+  const { error } = edC
+    ? await sb.from('caixinhas').update({ nome, percentual: pct }).eq('id', edC.id)
+    : await sb.from('caixinhas').insert({ nome, percentual: pct });
+  if (error) return falha(error, 'Não salvou');
+  toast(edC ? 'Alteração salva' : 'Caixinha criada');
+  S.edit.caixa = null;
+  await recarregar('caixinhas');
+  render();
 }
 function gEu() {
   const { paga, morPartes, gastos } = dadosEu();
@@ -831,11 +929,41 @@ async function salvarPess(form) {
   const v = C.avaliarValor(fd.get('valor'));
   if (!v.ok) return toast(v.erro, true);
   if (v.valor <= 0) return toast('O valor precisa ser maior que zero', true);
-  const reg = { mes: S.mes, natureza: S.f.nat, tipo: normTipo(fd.get('tipo')), descricao: fd.get('descricao').trim() || null, valor: v.valor };
-  const { error } = await sb.from('pessoais').insert(reg);
+  const base = { natureza: S.f.nat, tipo: normTipo(fd.get('tipo')), descricao: fd.get('descricao').trim() || null, valor: v.valor };
+  if (!base.tipo) return toast('Escolha o tipo', true);
+  if (S.edit.pess || S.edit.pessf) return salvarEdicaoPess(base);
+  const fixo = S.f.freq === 'FIXO';
+  const { error } = fixo
+    ? await sb.from('pessoais_fixos').insert({ ...base, mes_inicio: S.mes, mes_fim: null })
+    : await sb.from('pessoais').insert({ ...base, mes: S.mes });
   if (error) return falha(error, 'Não salvou');
-  toast(S.f.nat === 'GANHO' ? 'Ganho salvo' : 'Gasto salvo');
-  await recarregar('pessoais');
+  toast(`${S.f.nat === 'GANHO' ? 'Ganho' : 'Gasto'} ${fixo ? 'fixo criado' : 'salvo'}`);
+  await recarregar(fixo ? 'pessoais_fixos' : 'pessoais');
+  render();
+  $('#pess-tipo')?.focus();
+}
+async function salvarEdicaoPess(base) {
+  if (S.edit.pess) {
+    const { error } = await sb.from('pessoais').update(base).eq('id', S.edit.pess);
+    if (error) return falha(error, 'Não salvou');
+    await recarregar('pessoais');
+  } else {
+    const ant = S.d.pessoaisFixos.find((p) => p.id === S.edit.pessf);
+    if (!ant) { S.edit.pessf = null; return render(); }
+    if (S.f.escopoFixo === 'DAQUI' && ant.mes_inicio < S.mes) {
+      // o antigo termina no mês anterior; um novo começa neste mês com os dados alterados
+      const { error: e1 } = await sb.from('pessoais_fixos').insert({ ...base, mes_inicio: S.mes, mes_fim: ant.mes_fim });
+      if (e1) return falha(e1, 'Não salvou');
+      const { error: e2 } = await sb.from('pessoais_fixos').update({ mes_fim: C.somaMes(S.mes, -1) }).eq('id', ant.id);
+      if (e2) { await recarregar('pessoais_fixos'); render(); return falha(e2, 'Criou o novo, mas não encerrou o antigo. Use Parar no antigo'); }
+    } else {
+      const { error } = await sb.from('pessoais_fixos').update(base).eq('id', ant.id);
+      if (error) return falha(error, 'Não salvou');
+    }
+    await recarregar('pessoais_fixos');
+  }
+  toast('Alteração salva');
+  S.edit.pess = null; S.edit.pessf = null;
   render();
 }
 async function repetirGanhos() {
@@ -847,6 +975,194 @@ async function repetirGanhos() {
   if (error) return falha(error, 'Não copiou');
   toast('Ganhos copiados');
   await recarregar('pessoais');
+  render();
+}
+
+// =====================================================================
+// ABA: PACIENTES (só da Mariana)
+// =====================================================================
+function dadosPacientes() {
+  const todos = S.d.pacientes;
+  const doMes = C.pacientesDoMes(todos, S.mes);
+  const futuros = todos.filter((p) => p.mes_inicio > S.mes)
+    .sort((a, b) => (a.mes_inicio === b.mes_inicio ? a.nome.localeCompare(b.nome, 'pt-BR') : a.mes_inicio < b.mes_inicio ? -1 : 1));
+  const receita = C.r2(doMes.reduce((a, p) => a + p.mensal, 0));
+  const base = S.f.escopoPac === 'MES' ? doMes : todos;
+  const serie = C.serieReceitaPacientes(todos, S.mes, Number(S.f.periodo));
+  return { todos, doMes, futuros, receita, base, serie };
+}
+function vPacientes() {
+  const { todos, doMes, futuros, receita, base, serie } = dadosPacientes();
+  const ed = S.edit.pac ? todos.find((p) => p.id === S.edit.pac) : null;
+  const atual = serie[serie.length - 1];
+  const varTxt = atual && atual.variacao != null
+    ? `<span class="${atual.variacao >= 0 ? 'desce' : 'sobe'}">${atual.variacao > 0 ? '+' : ''}${C.num(atual.variacao, 1)}%</span> em relação a ${C.nomeMes(C.somaMes(S.mes, -1), true)}`
+    : 'sem mês anterior para comparar';
+
+  const linhaSerie = [...serie].reverse().map((x) => `<tr>
+    <td>${C.cap(C.nomeMes(x.mes))}</td>
+    <td class="n">${x.qtd || '–'}</td>
+    <td class="n">${x.valor ? C.brl(x.valor) : '–'}</td>
+    <td class="n">${x.variacao == null ? '' : `<span class="${x.variacao >= 0 ? 'desce' : 'sobe'}">${x.variacao > 0 ? '+' : ''}${C.num(x.variacao, 1)}%</span>`}</td></tr>`).join('');
+
+  const itemPac = (p, ativo) => {
+    const mensal = C.valorMensalPaciente(p);
+    const n = C.consultasDoPlano(p.plano);
+    const selo = ativo && n > 1 ? `<span class="selo ouro">${p.consulta} de ${n}</span>`
+      : `<span class="selo">${C.planoDe(p.plano).nome}</span>`;
+    const periodo = n > 1
+      ? `${C.nomeMes(p.mes_inicio, true)} a ${C.nomeMes(C.mesFimPaciente(p), true)}`
+      : C.nomeMes(p.mes_inicio, true);
+    return `<li>
+      <span class="barra p-MARIANA"></span>
+      <div><div class="titulo">${esc(p.nome)}${selo}</div>
+        <div class="sub">${esc(p.tipo || '')}${p.cidade ? ` · ${esc(p.cidade)}` : ''} · ${periodo} · plano ${C.brl(p.valor)}${n > 1 ? ` em ${n}x` : ''}${p.objetivo ? ` · ${esc(p.objetivo)}` : ''}</div></div>
+      <span class="valor">${C.brl(mensal)}</span>
+      <span class="ops">
+        <button type="button" data-acao="editar-pac" data-id="${p.id}" title="Editar" aria-label="Editar">✎</button>
+        <button type="button" data-acao="excluir-pac" data-id="${p.id}" title="Excluir" aria-label="Excluir">✕</button>
+      </span></li>`;
+  };
+  const tiposUsados = [...new Set([...C.TIPOS_ATENDIMENTO, ...todos.map((p) => p.tipo)])].filter(Boolean);
+  const cidadesUsadas = [...new Set([...C.CIDADES, ...todos.map((p) => p.cidade)])].filter(Boolean);
+
+  return `
+  <section class="numeros">
+    <div class="numero"><dt>Pacientes em ${C.nomeMes(S.mes, true)}</dt><dd>${doMes.length}</dd></div>
+    <div class="numero destaque"><dt>Ganhos com pacientes</dt><dd>${C.brl(receita)}</dd></div>
+    <div class="numero"><dt>Média por paciente</dt><dd>${C.brl(doMes.length ? receita / doMes.length : 0)}</dd></div>
+    <div class="numero"><dt>Cadastrados no total</dt><dd>${todos.length}</dd></div>
+  </section>
+  <p class="nota">Esses ganhos entram sozinhos na sua área, marcados como <strong>paciente</strong>.</p>
+
+  <div class="duas duas-form">
+    <form class="bloco form" data-form="pac">
+      <h2>${ed ? 'Editar paciente' : 'Novo paciente'}</h2>
+      <label>Nome <input type="text" name="nome" required autocomplete="off" value="${esc(ed?.nome || '')}"></label>
+      <div><span class="rotulo">Plano</span>${seg('pacPlano', C.PLANOS.map((p) => [p.id, p.nome]))}</div>
+      <p class="nota">Avulso e consultoria valem 1 mês. Trimestral repete 3 meses e semestral 6, sempre com o valor do plano dividido pelo número de consultas.</p>
+      <label>Mês inicial <input type="month" name="inicio" required value="${C.mesParaInput(ed?.mes_inicio || S.mes)}"></label>
+      ${campoValor('valor', ed ? String(ed.valor).replace('.', ',') : '', 'valor total do plano')}
+      <p class="nota" id="pac-previa"></p>
+      <label>Tipo <input type="text" name="tipo" id="pac-tipo" list="dl-pac-tipo" required autocomplete="off" value="${esc(ed?.tipo || '')}"></label>
+      ${chips('pac-tipo', tiposUsados)}
+      ${datalist('dl-pac-tipo', C.TIPOS_ATENDIMENTO, todos.map((p) => p.tipo))}
+      <label>Cidade <input type="text" name="cidade" id="pac-cidade" list="dl-pac-cidade" required autocomplete="off" value="${esc(ed?.cidade || '')}"></label>
+      ${chips('pac-cidade', cidadesUsadas)}
+      ${datalist('dl-pac-cidade', C.CIDADES, todos.map((p) => p.cidade))}
+      <label><span>Objetivo <span class="campo-dica">emagrecimento, hipertrofia…</span></span>
+        <input type="text" name="objetivo" autocomplete="off" value="${esc(ed?.objetivo || '')}"></label>
+      <div class="acoes">
+        <button type="submit" class="btn btn-cheio">${ed ? 'Salvar alteração' : 'Cadastrar paciente'}</button>
+        ${ed ? '<button type="button" class="btn" data-acao="cancelar-pac">Cancelar</button>' : ''}
+      </div>
+    </form>
+
+    <section class="bloco">
+      <div class="bloco-cab"><h2>Atendimentos de ${C.nomeMes(S.mes)}</h2><span class="nota">use as setas do mês para ver outros meses</span></div>
+      ${doMes.length ? `<ul class="lista">${doMes.map((p) => itemPac(p, true)).join('')}</ul>` : '<p class="vazio">Nenhum paciente neste mês.</p>'}
+      ${futuros.length ? `<div class="grupo"><h3>Começam depois</h3><ul class="lista">${futuros.map((p) => itemPac(p, false)).join('')}</ul></div>` : ''}
+    </section>
+  </div>
+
+  <section class="bloco">
+    <div class="bloco-cab"><h2>Perfil dos pacientes</h2>
+      <div style="min-width:240px">${seg('escopoPac', [['MES', C.cap(C.nomeMes(S.mes, true))], ['TUDO', 'Todos']])}</div></div>
+    ${base.length ? `
+    <div class="tres-graficos">
+      <div><h3>Por plano</h3><div class="pizza-lado"><div class="grafico"><canvas id="g-pac-plano"></canvas></div><div id="leg-pac-plano"></div></div></div>
+      <div><h3>Por tipo</h3><div class="pizza-lado"><div class="grafico"><canvas id="g-pac-tipo"></canvas></div><div id="leg-pac-tipo"></div></div></div>
+      <div><h3>Por cidade</h3><div class="pizza-lado"><div class="grafico"><canvas id="g-pac-cidade"></canvas></div><div id="leg-pac-cidade"></div></div></div>
+    </div>` : '<p class="vazio">Nenhum paciente para mostrar.</p>'}
+  </section>
+
+  <section class="bloco">
+    <div class="bloco-cab"><h2>Ganhos mês a mês</h2><span class="nota">${varTxt}</span></div>
+    <div style="max-width:360px; margin-bottom:14px">${seg('periodo', [['6', '6 meses'], ['12', '12 meses'], ['24', '24 meses']])}</div>
+    <div class="grafico"><canvas id="g-pac-serie"></canvas></div>
+    <div class="tabela-wrap" style="margin-top:14px"><table>
+      <thead><tr><th>Mês</th><th class="n">Pacientes</th><th class="n">Ganhos</th><th class="n">Variação</th></tr></thead>
+      <tbody>${linhaSerie}</tbody>
+    </table></div>
+  </section>`;
+}
+function gPacientes() {
+  const { base, serie } = dadosPacientes();
+  const mapa = [['plano', 'g-pac-plano', 'leg-pac-plano'], ['tipo', 'g-pac-tipo', 'leg-pac-tipo'], ['cidade', 'g-pac-cidade', 'leg-pac-cidade']];
+  for (const [campo, canvas, leg] of mapa) {
+    const dados = C.contarPor(base, campo);
+    const el = $(`#${leg}`);
+    if (el) el.innerHTML = dados.length ? legendaQtd(dados) : '<p class="vazio">Sem dados.</p>';
+    if (dados.length) pizzaQtd(canvas, dados);
+  }
+  const el = document.getElementById('g-pac-serie');
+  if (!el) return;
+  S.charts.push(new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: serie.map((x) => C.nomeMes(x.mes, true)),
+      datasets: [{ label: 'Ganhos com pacientes', data: serie.map((x) => x.valor), backgroundColor: cssVar('--mariana'), borderRadius: 3, maxBarThickness: 44 }],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (c) => `${C.brl(c.raw)} · ${serie[c.dataIndex].qtd} paciente(s)`,
+            footer: (arr) => {
+              const v = serie[arr[0].dataIndex].variacao;
+              return v == null ? '' : `${v > 0 ? '+' : ''}${C.num(v, 1)}% sobre o mês anterior`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, grid: { color: cssVar('--linha') }, ticks: { callback: (v) => C.brl(v) } },
+      },
+    },
+  }));
+}
+function previaPac(form) {
+  const el = $('#pac-previa');
+  if (!el || !form) return;
+  const n = C.consultasDoPlano(S.f.pacPlano);
+  const r = C.avaliarValor(form.elements.valor.value);
+  const inicio = C.inputParaMes(form.elements.inicio.value);
+  if (!r.ok || !inicio) { el.textContent = ''; return; }
+  const fim = C.somaMes(inicio, n - 1);
+  el.textContent = n > 1
+    ? `${C.brl(r.valor / n)} por mês, de ${C.nomeMes(inicio)} a ${C.nomeMes(fim)} (${n} consultas).`
+    : `${C.brl(r.valor)} só em ${C.nomeMes(inicio)}.`;
+}
+async function salvarPac(form) {
+  const fd = new FormData(form);
+  const v = C.avaliarValor(fd.get('valor'));
+  if (!v.ok) return toast(v.erro, true);
+  if (v.valor <= 0) return toast('O valor precisa ser maior que zero', true);
+  const inicio = C.inputParaMes(fd.get('inicio'));
+  if (!inicio) return toast('Informe o mês inicial', true);
+  const nome = String(fd.get('nome') || '').trim();
+  if (!nome) return toast('Informe o nome', true);
+  const reg = {
+    nome,
+    plano: S.f.pacPlano,
+    mes_inicio: inicio,
+    valor: v.valor,
+    tipo: normTipo(fd.get('tipo')),
+    cidade: normTipo(fd.get('cidade')),
+    objetivo: String(fd.get('objetivo') || '').trim() || null,
+  };
+  if (!reg.tipo) return toast('Informe o tipo', true);
+  if (!reg.cidade) return toast('Informe a cidade', true);
+  const { error } = S.edit.pac
+    ? await sb.from('pacientes').update(reg).eq('id', S.edit.pac)
+    : await sb.from('pacientes').insert(reg);
+  if (error) return falha(error, 'Não salvou');
+  toast(S.edit.pac ? 'Paciente atualizado' : 'Paciente cadastrado');
+  S.edit.pac = null;
+  await recarregar('pacientes');
   render();
 }
 
@@ -867,6 +1183,23 @@ function pizza(id, tipos) {
     options: {
       maintainAspectRatio: false, cutout: '58%',
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${c.label}: ${C.brl(c.raw)} (${C.num(tipos[c.dataIndex].pct * 100, 1)}%)` } } },
+    },
+  }));
+}
+function legendaQtd(dados) {
+  return `<ul class="legenda-tipos">${dados.map((t) => `
+    <li><span class="bola" style="background:${corTipo(t.tipo)}"></span><span>${esc(t.tipo)}</span>
+    <span>${t.valor}</span><span class="pct">${C.num(t.pct * 100, 1)}%</span></li>`).join('')}</ul>`;
+}
+function pizzaQtd(id, dados) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  S.charts.push(new Chart(el, {
+    type: 'doughnut',
+    data: { labels: dados.map((t) => t.tipo), datasets: [{ data: dados.map((t) => t.valor), backgroundColor: dados.map((t) => corTipo(t.tipo)), borderColor: cssVar('--superficie'), borderWidth: 2 }] },
+    options: {
+      maintainAspectRatio: false, cutout: '58%',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${c.label}: ${c.raw} paciente(s) (${C.num(dados[c.dataIndex].pct * 100, 1)}%)` } } },
     },
   }));
 }
@@ -908,8 +1241,8 @@ document.addEventListener('click', async (e) => {
   const n = Number(id);
 
   switch (acao) {
-    case 'mes-ant': S.mes = C.somaMes(S.mes, -1); S.edit = { lanc: null, parc: null }; return render();
-    case 'mes-prox': S.mes = C.somaMes(S.mes, 1); S.edit = { lanc: null, parc: null }; return render();
+    case 'mes-ant': S.mes = C.somaMes(S.mes, -1); S.edit = semEdicao(); return render();
+    case 'mes-prox': S.mes = C.somaMes(S.mes, 1); S.edit = semEdicao(); return render();
     case 'mes-hoje': S.mes = C.mesAtual(); return render();
     case 'aba': return irPara(v);
 
@@ -919,8 +1252,9 @@ document.addEventListener('click', async (e) => {
       atualizarDependentes();
       if (k === 'fim' || k === 'cat') previaParc($('[data-form=lanc]'));
       if (k === 'grafMor') desenharConsumo();
-      if (k === 'periodo') render();
-      if (k === 'nat') { const t = $('#pess-tipo'); if (t) t.value = ''; }
+      if (k === 'periodo' || k === 'escopoPac') render();
+      if (k === 'pacPlano') previaPac($('[data-form=pac]'));
+      if (k === 'nat' && !S.edit.pess && !S.edit.pessf) { const t = $('#pess-tipo'); if (t) t.value = ''; }
       return;
     }
     case 'chip': {
@@ -932,12 +1266,12 @@ document.addEventListener('click', async (e) => {
 
     case 'editar-lanc': {
       const l = S.d.lancamentos.find((x) => x.id === n);
-      S.edit = { lanc: n, parc: null }; S.f.cat = l.categoria; S.f.pagador = l.pagador;
+      S.edit = { ...semEdicao(), lanc: n }; S.f.cat = l.categoria; S.f.pagador = l.pagador;
       render(); $('[data-form=lanc]').scrollIntoView({ behavior: 'smooth' });
       return;
     }
     case 'cancelar-edicao':
-      S.edit = { lanc: null, parc: null }; S.f.cat = 'COMPARTILHADO'; S.f.fim = 'REC'; S.f.pagador = S.perfil.pessoa;
+      S.edit = semEdicao(); S.f.cat = 'COMPARTILHADO'; S.f.fim = 'REC'; S.f.pagador = S.perfil.pessoa;
       return render();
     case 'excluir-lanc': {
       const l = S.d.lancamentos.find((x) => x.id === n);
@@ -950,7 +1284,7 @@ document.addEventListener('click', async (e) => {
 
     case 'editar-parc': {
       const p = S.d.parceladas.find((x) => x.id === n);
-      S.edit = { lanc: null, parc: n }; S.f.cat = 'PARCELA'; S.f.pagador = p.pagador; S.f.div = p.divisao; S.f.fim = p.mes_fim ? 'MES' : 'REC';
+      S.edit = { ...semEdicao(), parc: n }; S.f.cat = 'PARCELA'; S.f.pagador = p.pagador; S.f.div = p.divisao; S.f.fim = p.mes_fim ? 'MES' : 'REC';
       render(); $('[data-form=lanc]').scrollIntoView({ behavior: 'smooth' });
       return;
     }
@@ -972,10 +1306,72 @@ document.addEventListener('click', async (e) => {
 
     case 'repetir-fixos': return repetirFixos();
     case 'repetir-ganhos': return repetirGanhos();
+    case 'editar-pac': {
+      const p = S.d.pacientes.find((x) => x.id === n);
+      S.edit.pac = n; S.f.pacPlano = p.plano;
+      render(); previaPac($('[data-form=pac]')); $('[data-form=pac]').scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    case 'cancelar-pac': S.edit.pac = null; return render();
+    case 'excluir-pac': {
+      const p = S.d.pacientes.find((x) => x.id === n);
+      if (!confirm(`Excluir ${p.nome}? Some de todos os meses.`)) return;
+      const { error } = await sb.from('pacientes').delete().eq('id', n);
+      if (error) return falha(error, 'Não excluiu');
+      if (S.edit.pac === n) S.edit.pac = null;
+      toast('Paciente excluído'); await recarregar('pacientes'); return render();
+    }
+    case 'chip-pct': {
+      const inp = $('[data-form=caixa] [name=pct]');
+      if (inp) inp.value = v;
+      $$('button', b.parentElement).forEach((x) => x.setAttribute('aria-pressed', x === b));
+      return;
+    }
+    case 'editar-pess':
+    case 'editar-pessf': {
+      const fixo = acao === 'editar-pessf';
+      const p = (fixo ? S.d.pessoaisFixos : S.d.pessoais).find((x) => x.id === n);
+      if (!p) return;
+      S.edit = { ...semEdicao(), [fixo ? 'pessf' : 'pess']: n };
+      S.f.nat = p.natureza; S.f.escopoFixo = 'DAQUI';
+      render(); $('[data-form=pess]').scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    case 'cancelar-pess': S.edit.pess = null; S.edit.pessf = null; return render();
+    case 'editar-caixa': {
+      S.edit = { ...semEdicao(), caixa: n };
+      render(); $('[data-form=caixa]')?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    case 'cancelar-caixa': S.edit.caixa = null; return render();
+    case 'parar-pessf': {
+      const p = S.d.pessoaisFixos.find((x) => x.id === n);
+      if (!confirm(`${p.descricao || p.tipo}: o último mês passa a ser ${C.nomeMes(S.mes)}. Confirma?`)) return;
+      const { error } = await sb.from('pessoais_fixos').update({ mes_fim: S.mes }).eq('id', n);
+      if (error) return falha(error, 'Não encerrou');
+      toast('Encerrado neste mês'); await recarregar('pessoais_fixos'); return render();
+    }
+    case 'excluir-pessf': {
+      const p = S.d.pessoaisFixos.find((x) => x.id === n);
+      if (!confirm(`Excluir ${p.descricao || p.tipo}? Some de TODOS os meses. Para só parar daqui para a frente, use Parar.`)) return;
+      const { error } = await sb.from('pessoais_fixos').delete().eq('id', n);
+      if (error) return falha(error, 'Não excluiu');
+      if (S.edit.pessf === n) S.edit.pessf = null;
+      toast('Excluído'); await recarregar('pessoais_fixos'); return render();
+    }
+    case 'excluir-caixa': {
+      const c = S.d.caixinhas.find((x) => x.id === n);
+      if (!confirm(`Excluir a caixinha ${c.nome}?`)) return;
+      const { error } = await sb.from('caixinhas').delete().eq('id', n);
+      if (error) return falha(error, 'Não excluiu');
+      if (S.edit.caixa === n) S.edit.caixa = null;
+      toast('Caixinha excluída'); await recarregar('caixinhas'); return render();
+    }
     case 'excluir-pess': {
       if (!confirm('Excluir este lançamento?')) return;
       const { error } = await sb.from('pessoais').delete().eq('id', n);
       if (error) return falha(error, 'Não excluiu');
+      if (S.edit.pess === n) S.edit.pess = null;
       toast('Excluído'); await recarregar('pessoais'); return render();
     }
     default:
@@ -993,6 +1389,8 @@ document.addEventListener('submit', async (e) => {
     if (f === 'lanc') await (S.f.cat === 'PARCELA' ? salvarParc(form) : salvarLanc(form));
     else if (f === 'moradia') await salvarMoradia(form);
     else if (f === 'pess') await salvarPess(form);
+    else if (f === 'caixa') await salvarCaixa(form);
+    else if (f === 'pac') await salvarPac(form);
     else if (f === 'senha') {
       const { error } = await sb.auth.updateUser({ password: new FormData(form).get('senha') });
       if (error) falha(error, 'Não trocou a senha'); else { toast('Senha alterada'); form.reset(); }
@@ -1016,6 +1414,8 @@ document.addEventListener('input', (e) => {
   }
   const fp = el.closest('[data-form=lanc]');
   if (fp && ['inicio', 'qtd', 'fim'].includes(el.name)) previaParc(fp);
+  const fc = el.closest('[data-form=pac]');
+  if (fc && ['inicio', 'valor'].includes(el.name)) previaPac(fc);
 });
 
 iniciar();
