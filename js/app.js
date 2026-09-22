@@ -879,7 +879,7 @@ function blocoCaixinhas(sobra, caixas) {
       ${edC ? '<h3>Editar caixinha</h3>' : ''}
       <label>Nome da caixinha <input type="text" name="nome" required autocomplete="off" placeholder="Viagem, reserva, carro…" value="${esc(edC?.nome || '')}"></label>
       <label><span>Porcentagem da sobra <span class="campo-dica">até ${C.num(teto, 1)}%</span></span>
-        <input type="number" name="pct" min="1" max="${teto}" step="1" required placeholder="10" value="${edC ? edC.percentual : ''}"></label>
+        <input type="text" name="pct" inputmode="decimal" autocomplete="off" required placeholder="12,5" value="${edC ? String(edC.percentual).replace('.', ',') : ''}"></label>
       <div class="chips">${[5, 10, 20, 25, 50].filter((n) => n <= teto).map((n) => `<button type="button" data-acao="chip-pct" data-v="${n}">${n}%</button>`).join('')}</div>
       <div class="acoes">
         <button type="submit" class="btn btn-cheio">${edC ? 'Salvar alteração' : 'Criar caixinha'}</button>
