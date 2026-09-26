@@ -3,7 +3,7 @@
 // =====================================================================
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import * as C from './calc.js?v=6';
+import * as C from './calc.js?v=7';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -15,7 +15,7 @@ const S = {
   aba: 'acerto',
   d: { lancamentos: [], parceladas: [], moradia: [], legado: [], pessoais: [], pessoaisFixos: [], caixinhas: [], pacientes: [] },
   edit: { lanc: null, parc: null, pac: null, pess: null, pessf: null, caixa: null },
-  f: { cat: 'COMPARTILHADO', pagador: 'FELIPE', div: '50/50', fim: 'REC', nat: 'GASTO', freq: 'UNICO', pacPlano: 'AVULSO', escopoPac: 'MES', grafMor: 'ENERGIA', periodo: '12', morMes: null, escopoFixo: 'DAQUI' },
+  f: { cat: 'COMPARTILHADO', pagador: 'FELIPE', div: '50/50', fim: 'REC', nat: 'GASTO', freq: 'UNICO', pacPlano: 'AVULSO', escopoPac: 'MES', grafMor: 'ENERGIA', periodo: '12', morMes: null, escopoFixo: 'DAQUI', forma: 'OUTRO' },
   charts: [],
   ultimaCarga: 0,
 };
@@ -56,6 +56,9 @@ const COR_FIXA = {
   VIAGEM: '#2E9C9C', 'FARMÁCIA': '#9E3D5C', ASSINATURAS: '#4C5FD5', CASA: '#8C6D1F', PET: '#5A7D2B',
   PRESENTES: '#A36A9E', 'SAÚDE': '#B8426F', OUTROS: '#8A8FA3',
   ALUGUEL: '#1F6F8B', CONDOMINIO: '#6B5CA5', INTERNET: '#2E9C9C', AGUA: '#4C5FD5', ENERGIA: '#C98406', GAS: '#D0672F',
+  UBER: '#4C5FD5', 'UBER T': '#6B5CA5', ROUPA: '#B8426F', DOCE: '#D0672F', TRABALHO: '#1F6F8B',
+  PRESENTE: '#A36A9E', PAIS: '#8C6D1F', CURSO: '#5A7D2B', 'SEM CATEGORIA': '#B9C2BF',
+  'CARTÃO DE CRÉDITO': '#7A5230', 'MEU GASTO': '#B8426F',
   'CASAL (DIA A DIA)': '#1F6F8B', 'ACERTO DO CASAL': '#1F6F8B', 'CONDOMÍNIO': '#6B5CA5', 'CONTAS DA MORADIA': '#C98406', MORADIA: '#6B5CA5', 'PLANILHA (SEM DETALHE)': '#B9C2BF',
 };
 function corTipo(t) {
@@ -217,8 +220,10 @@ const valorParaCampo = (reg) => (reg.expressao ? reg.expressao : String(reg.valo
 
 function atualizarDependentes(raiz = document) {
   $$('[data-quando]', raiz).forEach((el) => {
-    const [k, v] = el.dataset.quando.split('=');
-    el.hidden = String(S.f[k]) !== v;
+    el.hidden = !el.dataset.quando.split('&').every((c) => {
+      const [k, v] = c.split('=');
+      return String(S.f[k]) === v;
+    });
   });
 }
 
@@ -738,20 +743,29 @@ function dadosEu() {
   const ganhos = meus.filter((p) => p.natureza === 'GANHO').sort(ordem);
   const gastos = meus.filter((p) => p.natureza === 'GASTO').sort(ordem);
   const soma = (l) => C.r2(l.reduce((a, x) => a + Number(x.valor), 0));
-  const totG = C.r2(soma(ganhos) + totPac); const totP = soma(gastos);
+  // Mariana: compras no cartão ficam num bloco próprio; contas dos pais não somam no gasto dela
+  const modoCartao = pessoa === 'MARIANA';
+  const cartao = modoCartao ? C.resumoCartao(gastos) : null;
+  const gastosLista = modoCartao ? gastos.filter((g) => !C.ehCartao(g)) : gastos;
+  const paisFora = modoCartao ? soma(gastosLista.filter(C.ehPais)) : 0;
+  const totG = C.r2(soma(ganhos) + totPac);
+  const totP = modoCartao ? C.r2(soma(gastosLista) - paisFora + cartao.meu) : soma(gastos);
   const sobra = C.r2(totG + recebe - totP - paga - moradia);
   const caixas = C.distribuirCaixinhas(S.d.caixinhas.filter((c) => c.dono === S.user.id), sobra);
-  return { pessoa, geral, recebe, paga, moradia, morPartes, ganhos, gastos, pacientes, totPac, totG, totP, sobra, caixas };
+  return { pessoa, geral, recebe, paga, moradia, morPartes, ganhos, gastos, gastosLista, modoCartao, cartao, paisFora, pacientes, totPac, totG, totP, sobra, caixas };
 }
 function vEu() {
-  const { pessoa, recebe, paga, morPartes, ganhos, gastos, pacientes, totPac, totG, totP, sobra, caixas } = dadosEu();
+  const { pessoa, recebe, paga, morPartes, ganhos, gastosLista, modoCartao, cartao, pacientes, totPac, totG, totP, sobra, caixas } = dadosEu();
   const outroNome = C.NOME[C.outro(pessoa)];
   const edU = S.edit.pess ? S.d.pessoais.find((p) => p.id === S.edit.pess) : null;
   const edF = S.edit.pessf ? S.d.pessoaisFixos.find((p) => p.id === S.edit.pessf) : null;
   const edE = edU || edF;
-  const item = (p) => `<li>
-    <span class="barra p-${pessoa}"></span>
-    <div><div class="titulo">${esc(p.descricao || p.tipo)}${p.descricao ? `<span class="selo">${esc(p.tipo)}</span>` : ''}${p.fixo ? '<span class="selo ouro">fixo</span>' : ''}</div>
+  const item = (p) => {
+    const pais = modoCartao && C.ehPais(p);
+    const tipoTxt = modoCartao && C.ehCartao(p) ? C.categoriaCartao(p) : p.tipo;
+    return `<li${pais ? ' class="fora"' : ''}>
+    <span class="barra ${pais ? 'pais' : `p-${pessoa}`}"></span>
+    <div><div class="titulo">${esc(p.descricao || tipoTxt)}${p.descricao ? `<span class="selo">${esc(tipoTxt)}</span>` : ''}${p.fixo ? '<span class="selo ouro">fixo</span>' : ''}${pais ? '<span class="selo pais">fora do seu total</span>' : ''}</div>
       ${p.fixo ? `<div class="sub">${p.mes_fim ? `${C.nomeMes(p.mes_inicio, true)} a ${C.nomeMes(p.mes_fim, true)}` : `todo mês desde ${C.nomeMes(p.mes_inicio, true)}`}</div>` : ''}</div>
     <span class="valor">${C.brl(p.valor)}</span>
     <span class="ops">${p.fixo
@@ -761,6 +775,7 @@ function vEu() {
       : `<button type="button" data-acao="editar-pess" data-id="${p.id}" title="Editar" aria-label="Editar">✎</button>
          <button type="button" data-acao="excluir-pess" data-id="${p.id}" title="Excluir" aria-label="Excluir">✕</button>`}</span>
   </li>`;
+  };
   const auto_ = (titulo, sub, v) => `<li><span class="barra auto"></span>
     <div><div class="titulo">${titulo}<span class="selo">automático</span></div><div class="sub">${sub}</div></div>
     <span class="valor">${C.brl(v)}</span><span class="ops"></span></li>`;
@@ -797,16 +812,22 @@ function vEu() {
     <form class="bloco form" data-form="pess">
       <h2>${edE ? (edF ? 'Editar lançamento fixo' : 'Editar lançamento') : 'Lançar na minha área'}</h2>
       ${seg('nat', [['GASTO', 'Gasto pessoal'], ['GANHO', 'Ganho']])}
+      ${modoCartao ? `<div data-quando="nat=GASTO"><span class="rotulo">Como pagou</span>${seg('forma', [['OUTRO', 'Débito / Pix / dinheiro'], ['CARTAO', 'Cartão de crédito']])}</div>` : ''}
       ${edE ? '' : seg('freq', [['UNICO', 'Só este mês'], ['FIXO', 'Todo mês (fixo)']])}
       ${edE ? '' : `<p class="nota" data-quando="freq=FIXO">Repete sozinho a partir de ${C.nomeMes(S.mes)}, até você parar.</p>`}
       ${edF && edF.mes_inicio < S.mes ? `
       <div><span class="rotulo">A alteração vale</span>${seg('escopoFixo', [['DAQUI', `De ${C.nomeMes(S.mes, true)} em diante`], ['TODOS', 'Todos os meses']])}</div>
       <p class="nota" data-quando="escopoFixo=DAQUI">Os meses anteriores continuam com o valor antigo (${C.brl(edF.valor)}).</p>
       <p class="nota" data-quando="escopoFixo=TODOS">Muda também os meses anteriores, desde ${C.nomeMes(edF.mes_inicio, true)}.</p>` : ''}
-      <label>Tipo <input type="text" name="tipo" id="pess-tipo" list="dl-pess" required autocomplete="off" value="${esc(edE?.tipo || '')}"></label>
-      ${chips('pess-tipo', C.TIPOS_GASTO_PESSOAL, 'nat=GASTO')}
+      <label><span>${modoCartao ? '<span data-quando="nat=GASTO&forma=CARTAO">Para onde foi o gasto</span><span data-quando="nat=GASTO&forma=OUTRO">Tipo</span><span data-quando="nat=GANHO">Tipo</span>' : 'Tipo'}</span>
+        <input type="text" name="tipo" id="pess-tipo" list="dl-pess" required autocomplete="off" value="${esc(edE?.tipo || '')}"></label>
+      ${modoCartao
+        ? `${chips('pess-tipo', C.TIPOS_GASTO_PESSOAL.filter((t) => t !== 'CARTÃO DE CRÉDITO'), 'nat=GASTO&forma=OUTRO')}
+           ${chips('pess-tipo', C.TIPOS_CARTAO, 'nat=GASTO&forma=CARTAO')}
+           <p class="nota" data-quando="nat=GASTO&forma=CARTAO"><strong>Pais</strong> entra no total do cartão, mas não soma no seu gasto.</p>`
+        : chips('pess-tipo', C.TIPOS_GASTO_PESSOAL, 'nat=GASTO')}
       ${chips('pess-tipo', C.TIPOS_GANHO, 'nat=GANHO')}
-      ${datalist('dl-pess', [...C.TIPOS_GASTO_PESSOAL, ...C.TIPOS_GANHO], [...S.d.pessoais.map((p) => p.tipo), ...S.d.pessoaisFixos.map((p) => p.tipo)])}
+      ${datalist('dl-pess', [...C.TIPOS_GASTO_PESSOAL, ...(modoCartao ? C.TIPOS_CARTAO : []), ...C.TIPOS_GANHO], [...S.d.pessoais.map((p) => p.tipo), ...S.d.pessoaisFixos.map((p) => p.tipo)])}
       <label><span>Descrição <span class="campo-dica">opcional</span></span><input type="text" name="descricao" autocomplete="off" value="${esc(edE?.descricao || '')}"></label>
       ${campoValor('valor', edE ? valorParaCampo(edE) : '')}
       <div class="acoes">
@@ -829,11 +850,18 @@ function vEu() {
           ${morPartes.aluguel ? auto_('Aluguel', 'sua metade', morPartes.aluguel) : ''}
           ${morPartes.condominio ? auto_('Condomínio', 'sua metade', morPartes.condominio) : ''}
           ${morPartes.contas ? auto_('Contas da moradia', 'sua metade de internet, água, energia e gás', morPartes.contas) : ''}
-          ${gastos.map(item).join('')}
+          ${modoCartao && cartao.qtd ? `<li><span class="barra auto"></span>
+            <div><div class="titulo">Cartão de crédito<span class="selo">automático</span></div>
+              <div class="sub">seu gasto na fatura · ${cartao.qtd} compra${cartao.qtd > 1 ? 's' : ''}${cartao.pais ? ` · ${C.brl(cartao.pais)} dos pais fora` : ''}</div></div>
+            <span class="valor">${C.brl(cartao.meu)}</span>
+            <span class="ops"><button type="button" class="op-txt" data-acao="ver-cartao" title="Ver as compras do cartão">Ver</button></span></li>` : ''}
+          ${gastosLista.map(item).join('')}
         </ul>
       </div>
     </section>
   </div>
+
+  ${modoCartao ? blocoCartao(cartao, item) : ''}
 
   ${blocoCaixinhas(sobra, caixas)}
 
@@ -848,6 +876,58 @@ function vEu() {
     <div class="acoes"><button type="submit" class="btn">Trocar senha</button></div>
   </form>`;
 }
+// ---------- cartão de crédito (só Mariana) ----------
+function serieCartao(qtd = 6) {
+  return C.listaMeses(S.mes, qtd).map((mes) => ({
+    mes, ...C.resumoCartao(C.pessoaisDoMes(S.d.pessoais, S.d.pessoaisFixos, mes, S.user.id)),
+  }));
+}
+function tiposCartao(cartao) {
+  return C.porTipo(cartao.itens.map((p) => ({ tipo: C.categoriaCartao(p), valor: Number(p.valor) })));
+}
+function blocoCartao(cartao, item) {
+  const serie = serieCartao();
+  const temHist = serie.some((x) => x.total > 0);
+  const ordem = (a, b) => C.categoriaCartao(a).localeCompare(C.categoriaCartao(b), 'pt-BR') || Number(b.valor) - Number(a.valor);
+  const linhasMes = [...serie].reverse().map((x) => `<tr><td>${C.cap(C.nomeMes(x.mes))}</td>
+    <td class="n">${x.total ? C.brl(x.total) : '–'}</td><td class="n">${x.meu ? C.brl(x.meu) : '–'}</td>
+    <td class="n">${x.pais ? C.brl(x.pais) : '–'}</td></tr>`).join('');
+  return `
+  <section class="bloco" id="bloco-cartao">
+    <div class="bloco-cab"><h2>Cartão de crédito</h2><span class="nota">compras de ${C.nomeMes(S.mes)}</span></div>
+    <section class="numeros" style="margin-bottom:16px">
+      <div class="numero"><dt>Total no cartão</dt><dd>${C.brl(cartao.total)}</dd></div>
+      <div class="numero destaque"><dt>Seu gasto</dt><dd>${C.brl(cartao.meu)}</dd></div>
+      <div class="numero"><dt>Contas dos pais</dt><dd>${C.brl(cartao.pais)}</dd></div>
+    </section>
+    <p class="nota">As contas dos pais aparecem no total do cartão, mas não entram no seu gasto nem na sua sobra.</p>
+    ${cartao.qtd ? `
+    <div class="pizza-lado" style="margin-top:16px"><div class="grafico"><canvas id="g-cartao"></canvas></div>${legendaTipos(tiposCartao(cartao))}</div>
+    <div class="grupo" style="margin-top:18px">
+      <div class="grupo-cab"><h3>Compras no cartão</h3><span class="grupo-tot">${cartao.qtd} compra${cartao.qtd > 1 ? 's' : ''}</span></div>
+      <ul class="lista">${[...cartao.itens].sort(ordem).map(item).join('')}</ul>
+    </div>` : '<p class="vazio">Nenhuma compra no cartão neste mês. Para lançar, escolha Gasto pessoal → Cartão de crédito.</p>'}
+    ${temHist ? `
+    <div class="grupo" style="margin-top:18px">
+      <div class="grupo-cab"><h3>Últimos 6 meses</h3></div>
+      <div class="grafico"><canvas id="g-cartao-meses"></canvas></div>
+      <div class="tabela-wrap" style="margin-top:12px"><table>
+        <thead><tr><th>Mês</th><th class="n">Total no cartão</th><th class="n">Seu gasto</th><th class="n">Pais</th></tr></thead>
+        <tbody>${linhasMes}</tbody>
+      </table></div>
+    </div>` : ''}
+  </section>`;
+}
+function gCartao(cartao) {
+  if (cartao.qtd) pizza('g-cartao', tiposCartao(cartao));
+  const serie = serieCartao();
+  if (!serie.some((x) => x.total > 0)) return;
+  barrasEmpilhadas('g-cartao-meses', serie.map((x) => C.nomeMes(x.mes, true)), [
+    { label: 'Seu gasto', data: serie.map((x) => x.meu), backgroundColor: corTipo('MEU GASTO') },
+    { label: 'Pais', data: serie.map((x) => x.pais), backgroundColor: corTipo('PAIS') },
+  ]);
+}
+
 function blocoCaixinhas(sobra, caixas) {
   const edC = S.edit.caixa ? caixas.itens.find((c) => c.id === S.edit.caixa) : null;
   const teto = C.r2(caixas.livre + (edC ? edC.percentual : 0));
@@ -912,17 +992,19 @@ async function salvarCaixa(form) {
   render();
 }
 function gEu() {
-  const { paga, morPartes, gastos } = dadosEu();
+  const { paga, morPartes, gastosLista, modoCartao, cartao } = dadosEu();
   const itens = [
     { tipo: 'ACERTO DO CASAL', valor: paga },
     { tipo: 'ALUGUEL', valor: morPartes.aluguel },
     { tipo: 'CONDOMÍNIO', valor: morPartes.condominio },
     { tipo: 'CONTAS DA MORADIA', valor: morPartes.contas },
-    ...gastos.map((g) => ({ tipo: g.tipo, valor: Number(g.valor) })),
+    ...(modoCartao ? [{ tipo: 'CARTÃO DE CRÉDITO', valor: cartao.meu }] : []),
+    ...gastosLista.filter((g) => !(modoCartao && C.ehPais(g))).map((g) => ({ tipo: g.tipo, valor: Number(g.valor) })),
   ];
   const tipos = C.porTipo(itens);
   $('#leg-eu').innerHTML = tipos.length ? legendaTipos(tipos) : '<p class="vazio">Sem gastos neste mês.</p>';
   if (tipos.length) pizza('g-eu', tipos);
+  if (modoCartao) gCartao(cartao);
 }
 async function salvarPess(form) {
   const fd = new FormData(form);
@@ -931,13 +1013,15 @@ async function salvarPess(form) {
   if (v.valor <= 0) return toast('O valor precisa ser maior que zero', true);
   const base = { natureza: S.f.nat, tipo: normTipo(fd.get('tipo')), descricao: fd.get('descricao').trim() || null, valor: v.valor };
   if (!base.tipo) return toast('Escolha o tipo', true);
+  const noCartao = S.perfil.pessoa === 'MARIANA' && S.f.nat === 'GASTO' && S.f.forma === 'CARTAO';
+  if (S.perfil.pessoa === 'MARIANA') base.cartao = noCartao;
   if (S.edit.pess || S.edit.pessf) return salvarEdicaoPess(base);
   const fixo = S.f.freq === 'FIXO';
   const { error } = fixo
     ? await sb.from('pessoais_fixos').insert({ ...base, mes_inicio: S.mes, mes_fim: null })
     : await sb.from('pessoais').insert({ ...base, mes: S.mes });
   if (error) return falha(error, 'Não salvou');
-  toast(`${S.f.nat === 'GANHO' ? 'Ganho' : 'Gasto'} ${fixo ? 'fixo criado' : 'salvo'}`);
+  toast(`${S.f.nat === 'GANHO' ? 'Ganho' : noCartao ? 'Gasto no cartão' : 'Gasto'} ${fixo ? 'fixo criado' : 'salvo'}`);
   await recarregar(fixo ? 'pessoais_fixos' : 'pessoais');
   render();
   $('#pess-tipo')?.focus();
@@ -1254,7 +1338,7 @@ document.addEventListener('click', async (e) => {
       if (k === 'grafMor') desenharConsumo();
       if (k === 'periodo' || k === 'escopoPac') render();
       if (k === 'pacPlano') previaPac($('[data-form=pac]'));
-      if (k === 'nat' && !S.edit.pess && !S.edit.pessf) { const t = $('#pess-tipo'); if (t) t.value = ''; }
+      if ((k === 'nat' || k === 'forma') && !S.edit.pess && !S.edit.pessf) { const t = $('#pess-tipo'); if (t) t.value = ''; }
       return;
     }
     case 'chip': {
@@ -1333,11 +1417,12 @@ document.addEventListener('click', async (e) => {
       const p = (fixo ? S.d.pessoaisFixos : S.d.pessoais).find((x) => x.id === n);
       if (!p) return;
       S.edit = { ...semEdicao(), [fixo ? 'pessf' : 'pess']: n };
-      S.f.nat = p.natureza; S.f.escopoFixo = 'DAQUI';
+      S.f.nat = p.natureza; S.f.escopoFixo = 'DAQUI'; S.f.forma = p.cartao ? 'CARTAO' : 'OUTRO';
       render(); $('[data-form=pess]').scrollIntoView({ behavior: 'smooth' });
       return;
     }
     case 'cancelar-pess': S.edit.pess = null; S.edit.pessf = null; return render();
+    case 'ver-cartao': $('#bloco-cartao')?.scrollIntoView({ behavior: 'smooth' }); return;
     case 'editar-caixa': {
       S.edit = { ...semEdicao(), caixa: n };
       render(); $('[data-form=caixa]')?.scrollIntoView({ behavior: 'smooth' });

@@ -16,6 +16,12 @@ export const TIPOS_GASTO_PESSOAL = [
   'ROUPAS', 'SAÚDE', 'ACADEMIA', 'CARRO', 'EDUCAÇÃO', 'BELEZA', 'LAZER',
   'CELULAR', 'INVESTIMENTO', 'OUTROS',
 ];
+// Cartão de crédito (só na Minha área da Mariana): para onde foi a compra
+export const TIPOS_CARTAO = [
+  'MERCADO', 'UBER', 'UBER T', 'ROUPA', 'FARMÁCIA', 'DOCE', 'TRABALHO',
+  'PRESENTE', 'PAIS', 'CURSO', 'VIAGEM',
+];
+export const TIPO_PAIS = 'PAIS';
 export const TIPOS_GANHO = ['SALÁRIO', 'FREELA', 'EXTRA', 'RENDIMENTO', 'REEMBOLSO', 'OUTROS'];
 
 export const CONTAS_MORADIA = [
@@ -327,4 +333,18 @@ export function totalGastosMes(lancamentos, parceladas, legado, mes) {
   const itens = itensDoMes(lancamentos, parceladas, mes);
   if (itens.length) return { total: r2(itens.reduce((a, it) => a + it.valor, 0)), fonte: 'site', itens };
   return { total: 0, fonte: 'vazio', itens: [] };
+}
+
+// ---------- cartão de crédito (Minha área da Mariana) ----------
+// É do cartão: marcado como crédito ou lançado com o tipo antigo "CARTÃO DE CRÉDITO"
+export const ehCartao = (p) => p.natureza === 'GASTO' && (p.cartao === true || p.tipo === 'CARTÃO DE CRÉDITO');
+// Contas dos pais: entram na fatura, mas NÃO somam no gasto dela
+export const ehPais = (p) => p.natureza === 'GASTO' && p.tipo === TIPO_PAIS;
+export const categoriaCartao = (p) => (p.tipo === 'CARTÃO DE CRÉDITO' ? 'SEM CATEGORIA' : p.tipo);
+
+export function resumoCartao(lista) {
+  const itens = lista.filter(ehCartao);
+  const total = r2(itens.reduce((a, p) => a + Number(p.valor), 0));
+  const pais = r2(itens.filter(ehPais).reduce((a, p) => a + Number(p.valor), 0));
+  return { itens, total, pais, meu: r2(total - pais), qtd: itens.length };
 }
