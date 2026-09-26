@@ -281,6 +281,9 @@ input:focus { border-color: var(--tinta); outline: none; }
 .lista .ops .op-txt { font-size: .78rem; font-weight: 700; }
 .selo { font-size: .72rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--papel); border: 1px solid var(--linha); color: var(--suave); margin-left: 6px; white-space: nowrap; }
 .selo.ouro { background: var(--ouro-claro); border-color: transparent; color: var(--ouro); }
+.selo.pais { background: var(--ouro-claro); border-color: transparent; color: var(--ouro); }
+.lista .barra.pais { background: #8C6D1F; }
+.lista li.fora .valor { color: var(--suave); font-weight: 600; }
 .grupo + .grupo { margin-top: 22px; }
 .grupo-cab { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; margin-bottom: 4px; }
 .grupo-tot { font-size: .85rem; color: var(--suave); }
