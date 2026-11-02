@@ -4,7 +4,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import * as C from './calc.js?v=7';
-import { criarInvest } from './invest-ui.js?v=2';
+import { criarInvest } from './invest-ui.js?v=3';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -161,6 +161,7 @@ async function entrarNoApp(user) {
   chip.className = `chip-pessoa p-${perfil.pessoa}`;
   const h = location.hash.replace('#', '');
   if (ABAS.includes(h)) S.aba = h;
+  else if (h.startsWith('invest')) S.aba = 'invest'; // #invest-finclass=… (favorito da Finclass)
   else if (h === 'parceladas') S.aba = 'lancar';
   carregando(false);
   render();

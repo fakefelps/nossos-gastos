@@ -35,7 +35,18 @@ e pelo botão **Atualizar agora**. O Excel da B3 continua funcionando como plano
 | "Pluggy recusou o Client ID/Secret" | Credencial errada ou regerada | Atualizar os segredos |
 | Ativo aparece "fora do alvo" com nome estranho | Pluggy mandou o nome sem ticker | Conferir `code` do ativo; incluir o nome no ALIAS do alvo |
 
-## 3. Arquivos
+## 3. Carteira-alvo pela Finclass (quando quiser)
+A Finclass não tem API. O app lê a carteira por um **favorito do navegador**, que usa o login que já está aberto
+(nenhuma senha passa pelo app).
+
+1. Aba **Invest.** → *Carteira-alvo (Finclass)* → arraste o botão **◈ Enviar para o Nossos Gastos** para a barra de favoritos do Chrome.
+2. Abra a página **Carteira** da Finclass e espere carregar.
+3. Clique no favorito. O app abre com a lista do que mudou (entrou, saiu, % e preço máximo) → **Aplicar**.
+
+O favorito lê `walletOutputRecommendedV2` da própria página (a carteira recomendada e a data em que a Finclass a revisou).
+Se a Finclass mudar o site e o favorito parar de funcionar, a carteira-alvo continua editável à mão.
+
+## 4. Arquivos
 | Arquivo | Função |
 |---|---|
 | `js/invest.js` | Motor: leitura do Excel, casamento com o alvo, cálculo de compra/venda |

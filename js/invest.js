@@ -27,32 +27,31 @@ export const CFG_PADRAO = {
 // ---------------------------------------------------------------------
 // Carteira-alvo embutida (ponto de partida; o app guarda a sua cópia editável).
 // Colunas: classe, ativo, nome, perc, grupo, equivalência, alias, tipoRef, valRef
-// FIX: BBSE3 e BRBI11 estavam trocados em relação à Finclass (print de 02/11/2026:
-// BB Seguridade 1,50% "em revisão" = R$ 225; BR Partners 2,00% = R$ 300 sobre R$ 15.000).
-// As demais linhas NÃO foram conferidas — confira na aba Investimentos.
+// Conferido com a "Carteira Renda" da Finclass (atualizada lá em 23/10/2026).
+// Para atualizar depois: favorito "Enviar para o Nossos Gastos" na página Carteira da Finclass.
 // ---------------------------------------------------------------------
 export const ALVO_PADRAO = [
   ['ACOES', 'BBSE3', 'BB SEGURIDADE', .015, 'BBSE', 'NAO', '', 'EM_REVISAO', null],
   ['ACOES', 'BRBI11', 'BR PARTNERS', .02, 'BRBI', 'NAO', '', 'PRECO_MAX', 17.87],
   ['ACOES', 'FESA4', 'FERBASA', .015, 'FESA', 'NAO', 'FESA3', 'PRECO_MAX', 9.5],
-  ['ACOES', 'GMAT3', 'GRUPO MATEUS', .015, 'GMAT', 'NAO', '', 'PRECO_MAX', 6.92],
-  ['ACOES', 'KEPL3', 'KEPLER WEBER', .035, 'KEPL', 'NAO', '', 'PRECO_MAX', 9.55],
-  ['ACOES', 'KLBN4', 'KLABIN', .035, 'KLBN', 'NAO', 'KLBN11|KLBN3', 'PRECO_MAX', 5.03],
+  ['ACOES', 'GMAT3', 'GRUPO MATEUS', .01, 'GMAT', 'NAO', '', 'PRECO_MAX', 6.92],
+  ['ACOES', 'KEPL3', 'KEPLER WEBER', .025, 'KEPL', 'NAO', '', 'PRECO_MAX', 9.55],
+  ['ACOES', 'KLBN4', 'KLABIN', .03, 'KLBN', 'NAO', 'KLBN11|KLBN3', 'PRECO_MAX', 5.03],
   ['ACOES', 'SLCE3', 'SLC AGRICOLA', .035, 'SLCE', 'NAO', '', 'PRECO_MAX', 23.28],
-  ['ACOES', 'WIZC3', 'WIZ CO.', .03, 'WIZC', 'NAO', '', 'PRECO_MAX', 10.5],
+  ['ACOES', 'VALE3', 'VALE', .015, 'VALE', 'NAO', '', 'PRECO_MAX', 83],
+  ['ACOES', 'WIZC3', 'WIZ CO.', .035, 'WIZC', 'NAO', '', 'PRECO_MAX', 7.92],
   ['FIIS', 'BRCR11', 'BTG CORPORATE OFFICE FUND', .015, 'BRCR11', 'NAO', '', 'PRECO_MAX', 85],
   ['FIIS', 'BTCI11', 'BTG CREDITO IMOBILIARIO', .0225, 'BTCI11', 'NAO', '', 'PRECO_MAX', 10],
   ['FIIS', 'BTHF11', 'BTG PACTUAL RE HEDGE FUND', .015, 'BTHF11', 'NAO', '', 'PRECO_MAX', 9.65],
   ['FIIS', 'CPTS11', 'CAPITANIA SECURITIES II', .03, 'CPTS11', 'NAO', '', 'PRECO_MAX', 8.9],
-  ['FIIS', 'HGLG11', 'PATRIA LOGISTICA', .015, 'HGLG11', 'NAO', 'PATL11', 'EM_REVISAO', null],
+  ['FIIS', 'HGLG11', 'PATRIA LOGISTICA', .02, 'HGLG11', 'NAO', 'PATL11', 'PRECO_MAX', 160],
   ['FIIS', 'JSRE11', 'JS REAL ESTATE MULTIGESTAO', .0125, 'JSRE11', 'NAO', '', 'PRECO_MAX', 92],
-  ['FIIS', 'LVBI11', 'VBI LOGISTICO', .01, 'LVBI11', 'NAO', '', 'EM_REVISAO', null],
   ['FIIS', 'MCRE11', 'MAUA CAPITAL REAL ESTATE', .03, 'MCRE11', 'NAO', '', 'PRECO_MAX', 10.1],
-  ['FIIS', 'PSEC11', 'PATRIA SECURITIES', .03, 'PSEC11', 'NAO', '', 'PRECO_MAX', 81],
+  ['FIIS', 'PSEC11', 'PATRIA SECURITIES', .03, 'PSEC11', 'NAO', '', 'EM_REVISAO', null],
   ['FIIS', 'PVBI11', 'VBI PRIME PROPERTIES', .0325, 'PVBI11', 'NAO', '', 'PRECO_MAX', 110],
   ['FIIS', 'RBVA11', 'RIO BRAVO RENDA VAREJO', .0125, 'RBVA11', 'NAO', '', 'PRECO_MAX', 10.45],
   ['FIIS', 'RBRX11', 'PATRIA PLUS MULTIESTRATEGIA', .025, 'RBRX11', 'NAO', '', 'PRECO_MAX', 9.35],
-  ['FIIS', 'TRXF11', 'TRX REAL ESTATE', .0225, 'TRXF11', 'NAO', '', 'PRECO_MAX', 101],
+  ['FIIS', 'TRXF11', 'TRX REAL ESTATE', .0275, 'TRXF11', 'NAO', '', 'PRECO_MAX', 101],
   ['FIIS', 'VILG11', 'VINCI LOGISTICA', .025, 'VILG11', 'NAO', '', 'PRECO_MAX', 111],
   ['FIIS', 'VISC11', 'VINCI SHOPPING CENTERS', .0325, 'VISC11', 'NAO', '', 'PRECO_MAX', 121],
   ['FIIS', 'XPCI11', 'XP CREDITO IMOBILIARIO', .0375, 'XPCI11', 'NAO', '', 'PRECO_MAX', 95],
@@ -60,9 +59,9 @@ export const ALVO_PADRAO = [
   ['CAIXA', 'CDII11', 'SPARTA INFRA', .05, 'FI-INFRA', 'SIM', '', 'P_VP', 1.03],
   ['CAIXA', 'CPTI11', 'CAPITANIA INFRA', .05, 'FI-INFRA', 'SIM', '', 'P_VP', 1.05],
   ['CAIXA', 'KDIF11', 'KINEA INFRA RENDA FIXA', .05, 'FI-INFRA', 'SIM', '', 'P_VP', 1.05],
-  ['CAIXA', 'TESOURO IPCA+ 2037 COM JUROS SEMESTRAIS', 'TESOURO IPCA+ 2037 JS', .05, 'TD-IPCA', 'SIM', '', 'TAXA', .065],
-  ['CAIXA', 'TESOURO IPCA+ 2045 COM JUROS SEMESTRAIS', 'TESOURO IPCA+ 2045 JS', .05, 'TD-IPCA', 'SIM', '', 'TAXA', .065],
-  ['CAIXA', 'TESOURO IPCA+ 2060 COM JUROS SEMESTRAIS', 'TESOURO IPCA+ 2060 JS', .025, 'TD-IPCA', 'SIM', '', 'TAXA', .065],
+  ['CAIXA', 'TESOURO IPCA+ 2037 COM JUROS SEMESTRAIS', 'TESOURO IPCA+ 2037 JS', .05, 'TD-IPCA', 'SIM', '', 'TAXA', .064],
+  ['CAIXA', 'TESOURO IPCA+ 2045 COM JUROS SEMESTRAIS', 'TESOURO IPCA+ 2045 JS', .05, 'TD-IPCA', 'SIM', '', 'TAXA', .064],
+  ['CAIXA', 'TESOURO IPCA+ 2060 COM JUROS SEMESTRAIS', 'TESOURO IPCA+ 2060 JS', .025, 'TD-IPCA', 'SIM', '', 'TAXA', .064],
   ['CAIXA', 'TESOURO PREFIXADO 2037 COM JUROS SEMESTRAIS', 'TESOURO PREFIXADO 2037 JS', .025, 'TD-PRE', 'SIM', '', 'TAXA', .10],
   ['ALTERNATIVOS', 'GOLD11', 'OURO (exterior: IAU)', .02, 'OURO', 'SIM', 'IAU', 'MERCADO', null],
   ['ALTERNATIVOS', 'WRLD11', 'GLOBAL (exterior: VT)', .08, 'GLOBAL', 'SIM', 'VT|WRLD39', 'MERCADO', null],
@@ -244,6 +243,117 @@ export function lerAlvo(wb, XLSX) {
       .forEach((r) => { if (r && r[0] != null) config[norm(r[0])] = r[1]; });
   }
   return { itens, config };
+}
+
+// ---------------------------------------------------------------------
+// Carteira recomendada da Finclass (dados enviados pelo favorito)
+// Árvore: { <perfil>: { group:'Root Node', children:[ { group:'A - Ações',
+//           children:[ { group:{ header:[…], rows:[[…]] } } ] }, … ] } }
+// ---------------------------------------------------------------------
+const CLASSE_FINCLASS = [
+  [/A[CÇ][OÕ]ES/, 'ACOES'], [/REAL ESTATE|IMOBILI/, 'FIIS'], [/CAIXA|RENDA FIXA/, 'CAIXA'], [/ALTERNATIV|INTERNACIONAL/, 'ALTERNATIVOS'],
+];
+const pctFinclass = (s) => num(String(s).replace(/%/g, '')) / 100;
+const ehTicker = (s) => /^[A-Z]{4}\d{1,2}$/.test(norm(s));
+
+// "R$ 17,87" → PRECO_MAX · "Em revisão" → EM_REVISAO · "P / VP até 1,03" → P_VP · "6.40%" → TAXA · "Preço de mercado" → MERCADO
+export function refFinclass(txt) {
+  const s = norm(txt);
+  if (!s || s === '-') return { tipoRef: '', valRef: null };
+  if (/REVISAO/.test(s)) return { tipoRef: 'EM_REVISAO', valRef: null };
+  if (/P\s*\/\s*VP/.test(s)) return { tipoRef: 'P_VP', valRef: num(s.replace(/[^\d,.]/g, '')) || null };
+  if (/MERCADO/.test(s)) return { tipoRef: 'MERCADO', valRef: null };
+  if (/%/.test(s)) return { tipoRef: 'TAXA', valRef: pctFinclass(s) };
+  if (/R\$/.test(s) || /^\d/.test(s)) return { tipoRef: 'PRECO_MAX', valRef: num(s) || null };
+  return { tipoRef: '', valRef: null };
+}
+
+// alvoAnterior: mantém grupo/alias/equivalência dos ativos que já existiam e
+// recupera o ticker quando a Finclass mostra "Em revisão" no lugar do código.
+export function lerFinclass(dados, alvoAnterior = ALVO_PADRAO) {
+  const arvore = dados?.arvore || dados;
+  const raizK = arvore && Object.keys(arvore).find((k) => arvore[k]?.children);
+  if (!raizK) throw new Error('Formato da carteira Finclass não reconhecido.');
+  const ant = alvoAnterior || [];
+  const porTicker = new Map(ant.map((a) => [norm(a.ativo), a]));
+  const porNome = new Map(ant.map((a) => [norm(a.nome), a]));
+  const itens = []; const avisos = [];
+
+  arvore[raizK].children.forEach((cls) => {
+    const nomeCls = norm(cls.group);
+    const classe = (CLASSE_FINCLASS.find(([re]) => re.test(nomeCls)) || [])[1];
+    if (!classe) { avisos.push(`Classe da Finclass não reconhecida: ${E(cls.group)}`); return; }
+    (cls.children || []).forEach((sub) => {
+      const g = sub.group || {};
+      const hdr = (g.header || []).map(norm);
+      const col = (re, padrao) => { const i = hdr.findIndex((h) => re.test(h)); return i >= 0 ? i : padrao; };
+      const cPct = col(/%|CARTEIRA/, 0);
+      const cNome = col(/EMPRESA|FUNDO|^ATIVO$/, 1);
+      const cCod = col(/CODIGO/, 2);
+      const cRef = col(/PRECO|REFERENCIA/, 3);
+      (g.rows || []).forEach((r) => {
+        const perc = pctFinclass(r[cPct]);
+        if (!perc) return;
+        const nome = String(r[cNome] ?? '').trim();
+        const cod = String(r[cCod] ?? '').trim();
+        // ticker: coluna Código → início do nome ("PSEC11 - …", "CDII11 (…") → nome igual ao alvo anterior
+        let ativo = ehTicker(cod) ? norm(cod) : null;
+        if (!ativo) { const m = norm(nome).match(/^([A-Z]{4}\d{1,2})\b/); if (m) ativo = m[1]; }
+        if (!ativo && /TESOURO/.test(norm(nome))) ativo = norm(nome);
+        if (!ativo) ativo = porNome.get(norm(nome))?.ativo || null;
+        if (!ativo) { avisos.push(`Sem código na Finclass: ${E(nome)} — ficou de fora.`); return; }
+        const velho = porTicker.get(norm(ativo));
+        const ref = refFinclass(r[cRef]);
+        const nomeLimpo = nome.replace(/^[A-Z]{4}\d{1,2}\s*[-–(]\s*/i, '').replace(/\)\s*$/, '').trim() || nome;
+        itens.push({
+          classe, ativo, perc,
+          nome: velho?.nome || (/TESOURO/.test(norm(nome)) ? nome : nomeLimpo.toUpperCase()),
+          grupo: velho?.grupo || (/TESOURO IPCA/.test(norm(ativo)) ? 'TD-IPCA' : /TESOURO PREFIXADO/.test(norm(ativo)) ? 'TD-PRE' : (raiz(ativo) || ativo)),
+          equiv: velho?.equiv || (/TESOURO/.test(norm(ativo)) ? 'SIM' : 'NAO'),
+          alias: velho?.alias || '',
+          tipoRef: ref.tipoRef, valRef: ref.valRef, obs: velho?.obs || '',
+        });
+      });
+    });
+  });
+  if (!itens.length) throw new Error('Nenhum ativo encontrado na carteira da Finclass.');
+  const soma = itens.reduce((a, b) => a + b.perc, 0);
+  if (Math.abs(soma - 1) > 0.0005) avisos.push(`A carteira da Finclass soma ${pct(soma)}, não 100%.`);
+  // "RENDA:1500000" = valor investido em centavos
+  const mValor = String(dados?.valor || '').match(/(\d+)\s*$/);
+  return { itens, avisos, valor: mValor ? Number(mValor[1]) / 100 : null, titulo: dados?.titulo || null, atualizadaEm: dados?.atualizadaEm || null };
+}
+
+// o que muda do alvo atual para o novo (para revisar antes de aplicar)
+export function diffAlvo(antigo, novo) {
+  const A = new Map(antigo.map((a) => [norm(a.ativo), a]));
+  const N = new Map(novo.map((a) => [norm(a.ativo), a]));
+  const out = [];
+  const refTxt = (a) => (a.tipoRef === 'EM_REVISAO' ? 'em revisão' : a.tipoRef === 'PRECO_MAX' && a.valRef ? `máx ${brl(a.valRef)}`
+    : a.tipoRef === 'TAXA' && a.valRef ? `taxa ${pct(a.valRef)}` : a.tipoRef === 'P_VP' && a.valRef ? `P/VP ${String(a.valRef).replace('.', ',')}` : '—');
+  novo.forEach((n) => {
+    const a = A.get(norm(n.ativo));
+    if (!a) { out.push({ tipo: 'entrou', ativo: n.ativo, de: '', para: `${pct(n.perc)} · ${refTxt(n)}` }); return; }
+    if (Math.abs(a.perc - n.perc) > 1e-6) out.push({ tipo: '%', ativo: n.ativo, de: pct(a.perc), para: pct(n.perc) });
+    if (refTxt(a) !== refTxt(n)) out.push({ tipo: 'referência', ativo: n.ativo, de: refTxt(a), para: refTxt(n) });
+  });
+  antigo.forEach((a) => { if (!N.has(norm(a.ativo))) out.push({ tipo: 'saiu', ativo: a.ativo, de: pct(a.perc), para: '' }); });
+  return out;
+}
+
+// Favorito do navegador: roda na página Carteira da Finclass e abre o app com os dados.
+export function codigoFavorito(urlApp) {
+  const js = `(()=>{try{const c=document.querySelector('#app').__vue_app__.config.globalProperties.$store.state.courses;`
+    + `const w=c.walletOutputRecommendedV2;if(!w||!w.recommendedBody)throw 0;`
+    + `const d={v:1,titulo:w.recommendedTitle,atualizadaEm:w.updatedAt,valor:c.walletOutputV2&&c.walletOutputV2.outputValue,arvore:w.recommendedBody.json_data};`
+    + `window.open(${JSON.stringify(urlApp)}+'#invest-finclass='+btoa(unescape(encodeURIComponent(JSON.stringify(d)))),'_blank');`
+    + `}catch(e){alert('Abra a página Carteira da Finclass, espere carregar e clique de novo.');}})()`;
+  return `javascript:${encodeURIComponent(js)}`;
+}
+export function lerHashFinclass(hash) {
+  const m = String(hash || '').match(/invest-finclass=([^&]+)/);
+  if (!m) return null;
+  return JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));
 }
 
 // ---------------------------------------------------------------------
