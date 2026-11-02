@@ -4,10 +4,11 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import * as C from './calc.js?v=7';
+import { criarInvest } from './invest-ui.js?v=2';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const ABAS = ['acerto', 'lancar', 'moradia', 'historico', 'eu', 'pacientes'];
+const ABAS = ['acerto', 'lancar', 'moradia', 'historico', 'eu', 'invest', 'pacientes'];
 const S = {
   user: null,
   perfil: null,
@@ -69,6 +70,9 @@ function corTipo(t) {
 }
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
+// aba Investimentos (js/invest-ui.js + js/invest.js)
+const INV = criarInvest({ S, sb, toast, falha, esc, C, render: () => render() });
+
 // ---------------------------------------------------------------------
 // banco
 // ---------------------------------------------------------------------
@@ -90,6 +94,7 @@ async function carregarTudo() {
   ]);
   S.d = { lancamentos, parceladas, moradia, legado, pessoais, pessoaisFixos, caixinhas, pacientes };
   S.ultimaCarga = Date.now();
+  try { await INV.carregar(); } catch (e) { console.error('investimentos', e); }
 }
 async function recarregar(tabela) {
   const mapa = { lancamentos: 'lancamentos', parceladas: 'parceladas', moradia: 'moradia', pessoais: 'pessoais', pessoais_fixos: 'pessoaisFixos', caixinhas: 'caixinhas', pacientes: 'pacientes' };
@@ -174,10 +179,11 @@ function render() {
   S.charts.forEach((c) => c.destroy());
   S.charts = [];
   $('#mes-nome').textContent = C.cap(C.nomeMes(S.mes));
+  $('.seletor-mes').hidden = S.aba === 'invest';
   $$('.abas button').forEach((b) => b.setAttribute('aria-current', b.dataset.aba === S.aba ? 'page' : 'false'));
   const v = $('#view');
   if (S.aba === 'pacientes' && S.perfil.pessoa !== 'MARIANA') S.aba = 'eu';
-  const fn = { acerto: vAcerto, lancar: vLancar, moradia: vMoradia, historico: vHistorico, eu: vEu, pacientes: vPacientes }[S.aba];
+  const fn = { acerto: vAcerto, lancar: vLancar, moradia: vMoradia, historico: vHistorico, eu: vEu, invest: INV.vInvest, pacientes: vPacientes }[S.aba];
   v.innerHTML = fn();
   atualizarDependentes(v);
   const pos = { acerto: gAcerto, moradia: gMoradia, historico: gHistorico, eu: gEu, pacientes: gPacientes }[S.aba];
@@ -1323,6 +1329,10 @@ document.addEventListener('click', async (e) => {
   if (b.dataset.aba) return irPara(b.dataset.aba);
   const { acao, id, k, v } = b.dataset;
   const n = Number(id);
+  if (acao?.startsWith('inv-')) {
+    try { await INV.onClick(acao, b); } catch (err) { falha(err, 'Investimentos'); }
+    return;
+  }
 
   switch (acao) {
     case 'mes-ant': S.mes = C.somaMes(S.mes, -1); S.edit = semEdicao(); return render();
@@ -1501,6 +1511,11 @@ document.addEventListener('input', (e) => {
   if (fp && ['inicio', 'qtd', 'fim'].includes(el.name)) previaParc(fp);
   const fc = el.closest('[data-form=pac]');
   if (fc && ['inicio', 'valor'].includes(el.name)) previaPac(fc);
+});
+
+document.addEventListener('change', async (e) => {
+  if (S.aba !== 'invest' || !e.target.closest('#view')) return;
+  await INV.onChange(e.target);
 });
 
 iniciar();
