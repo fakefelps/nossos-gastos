@@ -2,7 +2,7 @@
 // INVESTIMENTOS — aba do app (tela + Supabase)
 // Dados por pessoa na tabela invest_carteira (uma linha, coluna jsonb "dados").
 // =====================================================================
-import * as I from './invest.js?v=2';
+import * as I from './invest.js?v=3';
 
 const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 let xlsxPromessa = null;
@@ -22,7 +22,9 @@ function garantirXLSX() {
 }
 
 export function criarInvest({ S, sb, toast, falha, esc, C, render }) {
-  const st = { R: null, erro: null, ultimo: null, abertos: new Set() };
+  const st = { R: null, erro: null, ultimo: null, abertos: new Set(), finclass: null };
+  // dados enviados pelo favorito da Finclass (#invest-finclass=…)
+  try { const d = I.lerHashFinclass(location.hash); if (d) st.finclass = { dados: d, usarValor: false }; } catch (e) { console.warn('hash Finclass inválido', e); }
   // mantém <details> abertos entre um render e outro
   document.addEventListener('toggle', (e) => {
     const k = e.target?.dataset?.invDet;
@@ -310,8 +312,16 @@ export function criarInvest({ S, sb, toast, falha, esc, C, render }) {
     return `<section class="bloco">
       <details class="detalhe inv-alvo" ${det('alvo')}>
         <summary>Carteira-alvo (Finclass) · ${alvo.length} ativos · soma <span class="${okSoma ? 'desce' : 'sobe'}">${pct(soma)}</span></summary>
-        <p class="nota">${proprio ? 'Esta é a sua cópia — editar aqui não muda a Finclass.' : 'Usando o alvo embutido. Ao editar qualquer linha, ele vira a sua cópia salva.'}
-          Confira com a tela <strong>Carteira</strong> da Finclass: % por ativo e preço máximo de compra.</p>
+        <div class="inv-fav">
+          <div><strong>Atualizar pela Finclass</strong>${st.R.finclass?.atualizadaEm ? ` <span class="selo">última: revisão de ${dataBR(String(st.R.finclass.atualizadaEm).slice(0, 10))}</span>` : ''}</div>
+          <ol>
+            <li>No computador, <strong>arraste</strong> este botão para a barra de favoritos do Chrome (Ctrl+Shift+B mostra a barra):
+              <a class="btn inv-fav-btn" href="${esc(I.codigoFavorito(location.origin + location.pathname))}" onclick="return false" title="Arraste para a barra de favoritos">◈ Enviar para o Nossos Gastos</a></li>
+            <li>Abra a página <strong>Carteira</strong> da Finclass e espere carregar.</li>
+            <li>Clique no favorito. O app abre mostrando o que mudou, e você confirma.</li>
+          </ol>
+        </div>
+        <p class="nota">${proprio ? 'Esta é a sua cópia — editar aqui não muda a Finclass.' : 'Usando o alvo embutido (Finclass de 23/10/2026). Ao editar qualquer linha, ele vira a sua cópia salva.'}</p>
         <div class="tabela-wrap"><table>
           <thead><tr><th>Ativo</th><th>Nome</th><th>Referência</th><th class="n">% alvo</th><th class="n">R$</th><th></th></tr></thead>
           <tbody>${linhas}</tbody>
@@ -332,6 +342,37 @@ export function criarInvest({ S, sb, toast, falha, esc, C, render }) {
     </section>`;
   }
 
+  function blocoFinclass() {
+    const F = st.finclass;
+    if (!F) return '';
+    let r;
+    try { r = I.lerFinclass(F.dados, alvoAtivo()); } catch (e) {
+      return `<section class="bloco inv-alerta"><h3>Carteira da Finclass</h3><p class="erro">${esc(e.message)}</p>
+        <div class="acoes"><button type="button" class="btn" data-acao="inv-fc-descartar">Fechar</button></div></section>`;
+    }
+    const mud = I.diffAlvo(alvoAtivo(), r.itens);
+    const quando = r.atualizadaEm ? dataBR(String(r.atualizadaEm).slice(0, 10)) : '';
+    const muda = r.valor && Math.abs(r.valor - Number(st.R.cfg.patMeta)) > 0.5;
+    const ROT = { entrou: 'Entrou', saiu: 'Saiu', '%': '% mudou', 'referência': 'Preço / taxa' };
+    return `<section class="bloco inv-fc">
+      <div class="bloco-cab"><h2>Atualização da Finclass</h2>
+        <span class="nota">${esc(r.titulo || 'Carteira')}${quando ? ` · revisada pela Finclass em <strong>${quando}</strong>` : ''}</span></div>
+      ${mud.length ? `<div class="tabela-wrap"><table>
+          <thead><tr><th>Mudança</th><th>Ativo</th><th>Antes</th><th>Agora</th></tr></thead>
+          <tbody>${mud.map((m) => `<tr><td><span class="selo${m.tipo === 'saiu' ? ' inv-sell-s' : m.tipo === 'entrou' ? ' ouro' : ''}">${ROT[m.tipo] || esc(m.tipo)}</span></td>
+            <td><strong>${esc(m.ativo.length > 16 ? r.itens.concat(alvoAtivo()).find((x) => x.ativo === m.ativo)?.nome || m.ativo : m.ativo)}</strong></td>
+            <td>${esc(m.de || '—')}</td><td>${esc(m.para || '—')}</td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="nota">Nenhuma mudança: a sua carteira-alvo já está igual à da Finclass.</p>'}
+      ${r.avisos.length ? `<ul class="inv-avisos">${r.avisos.map((a) => `<li>${a}</li>`).join('')}</ul>` : ''}
+      ${muda ? `<label class="inv-check" style="margin-top:12px"><input type="checkbox" data-inv="fc-valor" ${F.usarValor ? 'checked' : ''}>
+        <span>Usar também o valor investido da Finclass: <strong>${C.brl(r.valor)}</strong> (hoje: ${C.brl(st.R.cfg.patMeta)})</span></label>` : ''}
+      <div class="acoes" style="margin-top:14px">
+        <button type="button" class="btn btn-cheio" data-acao="inv-fc-aplicar">${mud.length ? `Aplicar ${mud.length} mudança(s)` : 'Ok'}</button>
+        <button type="button" class="btn" data-acao="inv-fc-descartar">Descartar</button>
+      </div>
+    </section>`;
+  }
+
   function vInvest() {
     if (!st.R) return '<p class="vazio">Carregando investimentos…</p>';
     const { todas, insts, sel, pos, res, erroCalc } = estado();
@@ -345,7 +386,7 @@ export function criarInvest({ S, sb, toast, falha, esc, C, render }) {
     } else {
       corpo = blocoResumo(res) + blocoClasses(res) + blocoAvisos(res);
     }
-    return blocoSetup() + blocoArquivos(insts, sel, todas) + blocoPlano(res) + corpo + blocoAlvo()
+    return blocoSetup() + blocoFinclass() + blocoArquivos(insts, sel, todas) + blocoPlano(res) + corpo + blocoAlvo()
       + '<p class="nota">Ferramenta de cálculo: os percentuais vêm da sua carteira-alvo. Confira preço e liquidez antes de executar qualquer ordem.</p>';
   }
 
@@ -395,6 +436,20 @@ export function criarInvest({ S, sb, toast, falha, esc, C, render }) {
         await salvar(); render(); return true;
       }
       case 'inv-sync': await sincronizarAgora(false); return true;
+      case 'inv-fc-aplicar': {
+        const r = I.lerFinclass(st.finclass.dados, alvoAtivo());
+        const n = I.diffAlvo(alvoAtivo(), r.itens).length;
+        st.R.alvo = r.itens;
+        st.R.finclass = { titulo: r.titulo, atualizadaEm: r.atualizadaEm, importadoEm: new Date().toISOString() };
+        if (st.finclass.usarValor && r.valor) st.R.cfg.patMeta = r.valor;
+        st.finclass = null;
+        history.replaceState(null, '', '#invest');
+        await salvar(); render();
+        toast(n ? `Carteira-alvo atualizada: ${n} mudança(s)` : 'Carteira-alvo conferida: nada mudou');
+        return true;
+      }
+      case 'inv-fc-descartar':
+        st.finclass = null; history.replaceState(null, '', '#invest'); render(); return true;
       case 'inv-of-add': {
         const id = document.getElementById('inv-of-id')?.value.trim();
         const nome = document.getElementById('inv-of-nome')?.value.trim() || 'XP';
@@ -457,6 +512,7 @@ export function criarInvest({ S, sb, toast, falha, esc, C, render }) {
       }
       const tipo = el.dataset?.inv;
       if (!tipo) return false;
+      if (tipo === 'fc-valor') { if (st.finclass) st.finclass.usarValor = el.checked; return true; }
       if (tipo === 'inst') {
         const marcadas = [...document.querySelectorAll('[data-inv=inst]')].filter((x) => x.checked).map((x) => x.value);
         st.R.instSel = marcadas;
